@@ -694,9 +694,13 @@ window.onload = function() {
     
     if (!isAuthenticated) {
         let password = prompt("يرجى إدخال رمز الدخول السري:");
-        if (password === "199500") { 
+        // استبدل '1234' بكلمة السر الخاصة بك
+        if (password === "1234") { 
             sessionStorage.setItem("isLoggedIn", "true");
             alert("تم الدخول بنجاح");
         } else {
             alert("رمز الدخول غير صحيح!");
             document.body.innerHTML = "<h2 style='text-align:center; margin-top:50px;'>عذراً، غير مصرح لك بالدخول.</h2>";
+        }
+    }
+};
