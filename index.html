@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>سجل الفحوصات | الدقة للبصريات</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@600;800&family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #FBFBFA; --alt: #EEF1F3; --surface: #FFFFFF;
+    --ink: #15171A; --muted: #565C63; --line: #D5D9DD;
+    --accent: #A4501A; --on-accent: #FFFFFF; --danger: #B3261E;
+    --display: "Noto Kufi Arabic", "Segoe UI", Tahoma, sans-serif;
+    --body: "IBM Plex Sans Arabic", "Segoe UI", Tahoma, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #111315; --alt: #191C1F; --surface: #1B1E21;
+      --ink: #F0F0EC; --muted: #A3A9AF; --line: #2E3338;
+      --accent: #E59A5C; --on-accent: #111315; --danger: #F2857D;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #111315; --alt: #191C1F; --surface: #1B1E21;
+    --ink: #F0F0EC; --muted: #A3A9AF; --line: #2E3338;
+    --accent: #E59A5C; --on-accent: #111315; --danger: #F2857D;
+  }
+
+  * { box-sizing: border-box; margin: 0; }
+  [hidden] { display: none !important; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 1.0625rem; line-height: 1.7; -webkit-font-smoothing: antialiased; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+  .ltr { direction: ltr; unicode-bidi: isolate; }
+
+  /* Top bar */
+  .bar { background: var(--surface); border-bottom: 1px solid var(--line); padding: .7rem 1.25rem; display: flex; align-items: center; gap: .5rem 1rem; flex-wrap: wrap; position: sticky; top: 0; z-index: 5; }
+  .bar h1 { font-family: var(--display); font-weight: 800; font-size: 1.2rem; line-height: 1.5; }
+  .bar .shop { color: var(--muted); font-size: .9rem; }
+  .bar-actions { margin-inline-start: auto; display: flex; gap: .5rem; flex-wrap: wrap; }
+
+  .btn { min-height: 2.9rem; padding: .6rem 1.15rem; border-radius: 10px; border: 1.5px solid var(--line); background: var(--surface); cursor: pointer; font-weight: 600; }
+  .btn:hover { border-color: var(--accent); }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .btn-primary:hover { filter: brightness(1.08); }
+  .btn-danger { color: var(--danger); border-color: var(--danger); background: transparent; }
+  .btn-small { min-height: 2.4rem; padding: .3rem .85rem; font-size: .95rem; }
+
+  /* Layout */
+  .cols { display: grid; grid-template-columns: minmax(18rem, 24rem) 1fr; min-height: calc(100vh - 4.4rem); }
+  .list-col { border-inline-end: 1px solid var(--line); padding: 1rem; }
+  .detail-col { padding: 1.25rem clamp(1rem, 3vw, 2rem) 3rem; min-width: 0; }
+  .back { display: none; margin-bottom: 1rem; }
+
+  .inp { width: 100%; min-height: 3rem; border: 1.5px solid var(--line); border-radius: 10px; padding: .5rem .8rem; background: var(--surface); }
+  .card .inp { background: var(--bg); }
+  .inp:focus-visible { outline-offset: 1px; border-color: var(--accent); }
+  textarea.inp { min-height: 5.5rem; resize: vertical; }
+
+  .count { color: var(--muted); font-size: .9rem; margin-top: .75rem; }
+  .note { display: block; width: 100%; text-align: start; margin-top: .75rem; padding: .6rem .8rem; border: 1.5px solid var(--accent); border-radius: 10px; background: transparent; cursor: pointer; font-size: .95rem; }
+  .plist { list-style: none; padding: 0; margin-top: .5rem; display: grid; gap: .5rem; }
+  .pitem { display: block; width: 100%; text-align: start; background: var(--surface); border: 1.5px solid var(--line); border-radius: 12px; padding: .7rem .9rem; cursor: pointer; }
+  .pitem:hover { border-color: var(--accent); }
+  .pitem[aria-current="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .pitem b { display: block; font-weight: 600; }
+  .pitem span { display: block; color: var(--muted); font-size: .9rem; }
+  .empty { color: var(--muted); padding: 1rem .25rem; }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 1.1rem 1.25rem; margin-bottom: 1rem; }
+  .card h2 { font-family: var(--display); font-weight: 800; font-size: 1.5rem; line-height: 1.5; }
+  .card h3 { font-family: var(--display); font-weight: 600; font-size: 1.1rem; }
+  .head { display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; align-items: flex-start; }
+  .actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+  .meta { display: flex; flex-wrap: wrap; gap: .25rem 1.25rem; color: var(--muted); margin-top: .25rem; }
+  .meta a { text-underline-offset: 4px; }
+  .notes { margin-top: .5rem; }
+  .exam-top { display: flex; flex-wrap: wrap; gap: .5rem 1rem; justify-content: space-between; align-items: center; }
+  .tag { display: inline-block; margin-inline-start: .6rem; padding: .05rem .6rem; font-size: .8rem; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-family: var(--body); font-weight: 600; }
+  .section-title { font-family: var(--display); font-weight: 600; margin: 1.5rem 0 .75rem; }
+
+  .tablewrap { overflow-x: auto; }
+  table.rx { width: 100%; border-collapse: collapse; text-align: center; margin-top: .6rem; direction: ltr; }
+  .rx th, .rx td { border: 1px solid var(--line); padding: .4rem .45rem; }
+  .rx th { background: var(--alt); font-weight: 600; font-size: .85rem; }
+  .rx td.eye { background: var(--alt); font-weight: 600; white-space: nowrap; }
+  .rx td.eye small { color: var(--muted); font-weight: 400; margin-inline-start: .3rem; }
+  .rx .inp { min-width: 4rem; text-align: center; padding-inline: .3rem; }
+  .extra { margin-top: .6rem; color: var(--muted); }
+  .extra b { color: var(--ink); font-weight: 600; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .field { margin-bottom: 1rem; }
+  .field label { display: block; font-weight: 500; font-size: .95rem; margin-bottom: .25rem; }
+  .hint { color: var(--muted); font-size: .85rem; margin-top: .6rem; }
+  .error { color: var(--danger); font-weight: 500; margin-bottom: .75rem; }
+  .form-actions { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .5rem; }
+
+  .foot { color: var(--muted); font-size: .85rem; padding: 1rem 1.25rem 2rem; text-align: center; }
+
+  @media (max-width: 52rem) {
+    .cols { grid-template-columns: 1fr; }
+    .detail-col { display: none; }
+    body.detail-open .detail-col { display: block; }
+    body.detail-open .list-col { display: none; }
+    .back { display: inline-flex; align-items: center; }
+    .list-col { border-inline-end: 0; }
+  }
+  @media (max-width: 34rem) { .grid2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <h1>سجل فحوصات النظر</h1>
+  <span class="shop">الدقة للبصريات</span>
+  <div class="bar-actions">
+    <button class="btn btn-primary" id="btnNew" type="button">+ مريض جديد</button>
+    <button class="btn" id="btnBackup" type="button">نسخة احتياطية</button>
+  </div>
+</div>
+
+<div class="cols">
+  <aside class="list-col">
+    <input class="inp" id="search" type="search" placeholder="ابحث بالاسم أو رقم الهاتف" autocomplete="off" aria-label="بحث عن مريض">
+    <button class="note" id="note" type="button" hidden></button>
+    <div class="count" id="count" aria-live="polite"></div>
+    <ul class="plist" id="plist"></ul>
+  </aside>
+  <main class="detail-col" id="detail"></main>
+</div>
+
+<p class="foot">السجلات محفوظة على هذا الجهاز فقط داخل المتصفح، ولا تُرسل إلى أي جهة. خذ نسخة احتياطية بانتظام.</p>
+
+<script>
+(function () {
+  'use strict';
+
+  var KEY = 'aldiqqa_patients_v1';
+  var BK = 'aldiqqa_last_backup_v1';
+  var COLS = ['sph', 'cyl', 'axis', 'add', 'va'];
+  var HEADS = ['SPH', 'CYL', 'AXIS', 'ADD', 'VA'];
+
+  var patients = [];
+  var selectedId = null;
+  var mode = 'none';      // none | view | newPatient | editPatient | exam | backup
+  var editingExamId = null;
+  var query = '';
+
+  var listEl = document.getElementById('plist');
+  var detailEl = document.getElementById('detail');
+  var countEl = document.getElementById('count');
+  var noteEl = document.getElementById('note');
+  var searchEl = document.getElementById('search');
+  var idCounter = 0;
+
+  /* ---------- helpers ---------- */
+  function h(tag, props) {
+    var el = document.createElement(tag);
+    props = props || {};
+    Object.keys(props).forEach(function (k) {
+      var v = props[k];
+      if (v === false || v === null || v === undefined) return;
+      if (k === 'class') el.className = v;
+      else if (k === 'text') el.textContent = v;
+      else if (k.slice(0, 2) === 'on') el.addEventListener(k.slice(2), v);
+      else if (v === true) el.setAttribute(k, '');
+      else el.setAttribute(k, v);
+    });
+    for (var i = 2; i < arguments.length; i++) {
+      var c = arguments[i];
+      if (c === null || c === undefined || c === false) continue;
+      el.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+    }
+    return el;
+  }
+  function arDigits(s) {
+    return String(s || '')
+      .replace(/[\u0660-\u0669]/g, function (c) { return String(c.charCodeAt(0) - 0x660); })
+      .replace(/[\u06F0-\u06F9]/g, function (c) { return String(c.charCodeAt(0) - 0x6F0); });
+  }
+  function digits(s) { return arDigits(s).replace(/\D/g, ''); }
+  function norm(s) {
+    return arDigits(s).toLowerCase()
+      .replace(/[\u064B-\u0652\u0670\u0640]/g, '')
+      .replace(/[\u0623\u0625\u0622\u0671]/g, '\u0627')
+      .replace(/\u0629/g, '\u0647')
+      .replace(/\u0649/g, '\u064A')
+      .replace(/\s+/g, ' ').trim();
+  }
+  function today() {
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function fmtDate(iso) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+    return m ? m[3] + '/' + m[2] + '/' + m[1] : (iso || '');
+  }
+  function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+  function waLink(phone) {
+    var d = digits(phone);
+    if (d.length < 10) return null;
+    if (d.charAt(0) === '0') d = '964' + d.slice(1);
+    return 'https://wa.me/' + d;
+  }
+  function sortedExams(p) {
+    return p.exams.slice().sort(function (a, b) {
+      return (b.date || '').localeCompare(a.date || '') || ((b.created || 0) - (a.created || 0));
+    });
+  }
+  function getPatient(id) {
+    for (var i = 0; i < patients.length; i++) if (patients[i].id === id) return patients[i];
+    return null;
+  }
+  function fixPatient(p) {
+    p.exams = Array.isArray(p.exams) ? p.exams : [];
+    p.name = String(p.name || '');
+    p.phone = String(p.phone || '');
+    p.age = String(p.age || '');
+    p.notes = String(p.notes || '');
+    p.updated = p.updated || p.created || Date.now();
+    return p;
+  }
+  function field(label, input, cls) {
+    idCounter++;
+    input.id = 'f' + idCounter;
+    return h('div', { class: 'field ' + (cls || '') }, h('label', { 'for': input.id, text: label }), input);
+  }
+
+  /* ---------- storage ---------- */
+  function load() {
+    try {
+      var raw = localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      patients = Array.isArray(arr) ? arr.map(fixPatient) : [];
+    } catch (e) { patients = []; }
+  }
+  function save() {
+    try {
+      localStorage.setItem(KEY, JSON.stringify(patients));
+      return true;
+    } catch (e) {
+      alert('تعذّر حفظ البيانات على هذا الجهاز. تأكد من أن المتصفح لا يعمل في وضع التصفح الخاص ومن وجود مساحة كافية.');
+      return false;
+    }
+  }
+  function lastBackup() {
+    try { return Number(localStorage.getItem(BK) || 0); } catch (e) { return 0; }
+  }
+
+  /* ---------- rendering: list ---------- */
+  function renderList() {
+    var q = norm(query);
+    var qd = digits(query);
+    var items = patients.filter(function (p) {
+      if (!q) return true;
+      if (norm(p.name).indexOf(q) > -1) return true;
+      return qd.length >= 3 && digits(p.phone).indexOf(qd) > -1;
+    }).sort(function (a, b) { return (b.updated || 0) - (a.updated || 0); });
+
+    listEl.textContent = '';
+    countEl.textContent = patients.length ? (q ? items.length + ' نتيجة من ' + patients.length : patients.length + ' مريض') : '';
+
+    if (!patients.length) {
+      listEl.appendChild(h('li', { class: 'empty', text: 'لا يوجد مرضى بعد. اضغط «+ مريض جديد» لإضافة أول مريض.' }));
+      return;
+    }
+    if (!items.length) {
+      listEl.appendChild(h('li', { class: 'empty', text: 'لا توجد نتائج مطابقة.' }));
+      return;
+    }
+    items.forEach(function (p) {
+      var ex = sortedExams(p);
+      var meta = ex.length ? 'آخر فحص: ' + fmtDate(ex[0].date) + ' · ' + ex.length + ' فحص' : 'لا توجد فحوصات';
+      var btn = h('button', { type: 'button', class: 'pitem', 'aria-current': p.id === selectedId ? 'true' : 'false',
+        onclick: function () { select(p.id); } },
+        h('b', { text: p.name }),
+        p.phone ? h('span', { class: 'ltr', style: 'text-align:right', text: p.phone }) : null,
+        h('span', { text: meta }));
+      listEl.appendChild(h('li', {}, btn));
+    });
+  }
+
+  function updateNote() {
+    var last = lastBackup();
+    var need = patients.length > 0 && (!last || Date.now() - last > 7 * 86400000);
+    noteEl.hidden = !need;
+    noteEl.textContent = last
+      ? 'مرّ أكثر من أسبوع على آخر نسخة احتياطية. اضغط هنا لحفظ نسخة جديدة.'
+      : 'لم تحفظ نسخة احتياطية بعد. اضغط هنا لحفظ نسخة.';
+  }
+
+  /* ---------- rendering: detail ---------- */
+  function rxTable(e) {
+    var t = h('table', { class: 'rx' });
+    var trh = h('tr', {}, h('th', { text: '' }));
+    HEADS.forEach(function (x) { trh.appendChild(h('th', { class: 'ltr', text: x })); });
+    t.appendChild(h('thead', {}, trh));
+    var tb = h('tbody');
+    [['od', 'يمنى', 'OD'], ['os', 'يسرى', 'OS']].forEach(function (eye) {
+      var tr = h('tr', {}, h('td', { class: 'eye' }, eye[1], h('small', { class: 'ltr', text: eye[2] })));
+      COLS.forEach(function (c) {
+        var v = (e[eye[0]] || {})[c];
+        tr.appendChild(h('td', { class: 'ltr', text: v ? v : '—' }));
+      });
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+    return h('div', { class: 'tablewrap' }, t);
+  }
+
+  function examCard(p, e, latest) {
+    var top = h('div', { class: 'exam-top' },
+      h('h3', {}, 'فحص ', h('span', { class: 'ltr', text: fmtDate(e.date) }), latest ? h('span', { class: 'tag', text: 'الأحدث' }) : null),
+      h('div', { class: 'actions' },
+        h('button', { type: 'button', class: 'btn btn-small', text: 'تعديل', onclick: function () { editingExamId = e.id; mode = 'exam'; refresh(); } }),
+        h('button', { type: 'button', class: 'btn btn-small btn-danger', text: 'حذف', onclick: function () {
+          if (confirm('حذف فحص ' + fmtDate(e.date) + ' نهائياً؟')) {
+            p.exams = p.exams.filter(function (x) { return x.id !== e.id; });
+            p.updated = Date.now();
+            if (save()) refresh();
+          }
+        } })));
+    var card = h('article', { class: 'card' }, top, rxTable(e));
+    if (e.pd || e.notes) {
+      var ex = h('p', { class: 'extra' });
+      if (e.pd) ex.appendChild(h('span', {}, h('b', { text: 'PD: ' }), h('span', { class: 'ltr', text: e.pd + '   ' })));
+      if (e.notes) ex.appendChild(h('span', {}, h('b', { text: 'ملاحظات: ' }), e.notes));
+      card.appendChild(ex);
+    }
+    return card;
+  }
+
+  function viewPatient(p) {
+    var wrap = h('div');
+    wrap.appendChild(h('button', { type: 'button', class: 'btn back', text: '→ رجوع للقائمة', onclick: back }));
+
+    var meta = h('div', { class: 'meta' });
+    if (p.phone) {
+      meta.appendChild(h('a', { href: 'tel:' + digits(p.phone), class: 'ltr', text: p.phone }));
+      var wa = waLink(p.phone);
+      if (wa) meta.appendChild(h('a', { href: wa, target: '_blank', rel: 'noopener', text: 'واتساب' }));
+    }
+    if (p.age) meta.appendChild(h('span', { text: 'العمر: ' + p.age }));
+
+    var head = h('div', { class: 'card' },
+      h('div', { class: 'head' },
+        h('div', {}, h('h2', { text: p.name }), meta),
+        h('div', { class: 'actions' },
+          h('button', { type: 'button', class: 'btn btn-primary', text: '+ فحص جديد', onclick: function () { editingExamId = null; mode = 'exam'; refresh(); } }),
+          h('button', { type: 'button', class: 'btn', text: 'تعديل البيانات', onclick: function () { mode = 'editPatient'; refresh(); } }),
+          h('button', { type: 'button', class: 'btn btn-danger', text: 'حذف المريض', onclick: function () {
+            if (confirm('حذف ملف المريض «' + p.name + '» وكل فحوصاته نهائياً؟')) {
+              patients = patients.filter(function (x) { return x.id !== p.id; });
+              if (save()) { selectedId = null; mode = 'none'; refresh(); }
+            }
+          } }))));
+    if (p.notes) head.appendChild(h('p', { class: 'notes', text: 'ملاحظات: ' + p.notes }));
+    wrap.appendChild(head);
+
+    wrap.appendChild(h('h3', { class: 'section-title', text: 'الفحوصات' }));
+    var exams = sortedExams(p);
+    if (!exams.length) wrap.appendChild(h('p', { class: 'empty', text: 'لا توجد فحوصات مسجلة لهذا المريض.' }));
+    exams.forEach(function (e, i) { wrap.appendChild(examCard(p, e, i === 0)); });
+    return wrap;
+  }
+
+  function patientForm(p) {
+    var isNew = !p;
+    var nameI = h('input', { class: 'inp', type: 'text', value: p ? p.name : '', autocomplete: 'off' });
+    var phoneI = h('input', { class: 'inp ltr', type: 'tel', value: p ? p.phone : '', autocomplete: 'off', inputmode: 'tel' });
+    var ageI = h('input', { class: 'inp', type: 'text', value: p ? p.age : '', autocomplete: 'off' });
+    var notesI = h('textarea', { class: 'inp', text: p ? p.notes : '' });
+    var err = h('p', { class: 'error', role: 'alert', hidden: true });
+
+    var form = h('form', { class: 'card', novalidate: true },
+      h('h2', { text: isNew ? 'مريض جديد' : 'تعديل بيانات المريض' }),
+      h('div', { style: 'height:1rem' }),
+      err,
+      field('الاسم', nameI),
+      h('div', { class: 'grid2' }, field('رقم الهاتف', phoneI), field('العمر', ageI)),
+      field('ملاحظات (أمراض، حساسية، استخدام حاسوب طويل...)', notesI),
+      h('div', { class: 'form-actions' },
+        h('button', { type: 'submit', class: 'btn btn-primary', text: 'حفظ' }),
+        h('button', { type: 'button', class: 'btn', text: 'إلغاء', onclick: function () {
+          if (p) { mode = 'view'; } else { mode = 'none'; selectedId = null; }
+          refresh();
+        } })));
+
+    form.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var name = nameI.value.trim();
+      if (!name) { err.textContent = 'اكتب اسم المريض.'; err.hidden = false; nameI.focus(); return; }
+      if (isNew) {
+        var np = fixPatient({ id: uid(), name: name, phone: phoneI.value.trim(), age: ageI.value.trim(), notes: notesI.value.trim(), exams: [], created: Date.now(), updated: Date.now() });
+        patients.push(np);
+        if (!save()) { patients.pop(); return; }
+        selectedId = np.id; editingExamId = null; mode = 'exam';
+      } else {
+        p.name = name; p.phone = phoneI.value.trim(); p.age = ageI.value.trim(); p.notes = notesI.value.trim(); p.updated = Date.now();
+        if (!save()) return;
+        mode = 'view';
+      }
+      refresh();
+    });
+    setTimeout(function () { nameI.focus(); }, 0);
+    return form;
+  }
+
+  function examForm(p, e) {
+    var isNew = !e;
+    var ex = e || { date: today(), od: {}, os: {}, pd: '', notes: '' };
+    var refs = {};
+
+    var dateI = h('input', { class: 'inp ltr', type: 'date', value: ex.date || today() });
+    var pdI = h('input', { class: 'inp ltr', type: 'text', value: ex.pd || '', autocomplete: 'off', placeholder: '62' });
+    var notesI = h('textarea', { class: 'inp', text: ex.notes || '' });
+
+    var t = h('table', { class: 'rx' });
+    var trh = h('tr', {}, h('th', { text: '' }));
+    HEADS.forEach(function (x) { trh.appendChild(h('th', { class: 'ltr', text: x })); });
+    t.appendChild(h('thead', {}, trh));
+    var tb = h('tbody');
+    [['od', 'يمنى', 'OD'], ['os', 'يسرى', 'OS']].forEach(function (eye) {
+      var tr = h('tr', {}, h('td', { class: 'eye' }, eye[1], h('small', { class: 'ltr', text: eye[2] })));
+      COLS.forEach(function (c, i) {
+        var inp = h('input', { class: 'inp ltr', type: 'text', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false',
+          'aria-label': (eye[0] === 'od' ? 'العين اليمنى ' : 'العين اليسرى ') + HEADS[i],
+          value: (ex[eye[0]] || {})[c] || '' });
+        refs[eye[0] + '_' + c] = inp;
+        tr.appendChild(h('td', {}, inp));
+      });
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+
+    var form = h('form', { class: 'card', novalidate: true },
+      h('h2', { text: (isNew ? 'فحص جديد' : 'تعديل الفحص') + ' — ' + p.name }),
+      h('div', { style: 'height:1rem' }),
+      field('تاريخ الفحص', dateI),
+      h('div', { class: 'tablewrap' }, t),
+      h('p', { class: 'hint', text: 'SPH: القوة الكروية · CYL: الأسطواني · AXIS: المحور · ADD: الإضافة للقراءة · VA: حدة البصر. اكتب الإشارة مع الرقم مثل -2.25 أو +1.50.' }),
+      h('div', { style: 'height:1rem' }),
+      h('div', { class: 'grid2' }, field('PD (المسافة بين البؤبؤين)', pdI)),
+      field('ملاحظات الفحص', notesI),
+      h('div', { class: 'form-actions' },
+        h('button', { type: 'submit', class: 'btn btn-primary', text: 'حفظ الفحص' }),
+        h('button', { type: 'button', class: 'btn', text: 'إلغاء', onclick: function () { editingExamId = null; mode = 'view'; refresh(); } })));
+
+    form.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var out = { id: e ? e.id : uid(), created: e ? e.created : Date.now(), date: dateI.value || today(), od: {}, os: {}, pd: pdI.value.trim(), notes: notesI.value.trim() };
+      COLS.forEach(function (c) { out.od[c] = refs['od_' + c].value.trim(); out.os[c] = refs['os_' + c].value.trim(); });
+      if (e) {
+        for (var i = 0; i < p.exams.length; i++) if (p.exams[i].id === e.id) p.exams[i] = out;
+      } else {
+        p.exams.push(out);
+      }
+      p.updated = Date.now();
+      if (save()) { editingExamId = null; mode = 'view'; refresh(); }
+    });
+    return form;
+  }
+
+  function backupView() {
+    var exams = 0;
+    patients.forEach(function (p) { exams += p.exams.length; });
+    var last = lastBackup();
+    var fileI = h('input', { type: 'file', accept: '.json,application/json', class: 'inp' });
+    fileI.addEventListener('change', function () {
+      var f = fileI.files && fileI.files[0];
+      if (!f) return;
+      var r = new FileReader();
+      r.onload = function () {
+        try {
+          var d = JSON.parse(r.result);
+          var arr = Array.isArray(d) ? d : d.patients;
+          if (!Array.isArray(arr) || arr.some(function (x) { return !x || !x.id || !x.name; })) throw new Error('bad');
+          if (confirm('سيتم استبدال السجلات الحالية (' + patients.length + ' مريض) بسجلات النسخة (' + arr.length + ' مريض). هل تريد المتابعة؟')) {
+            var old = patients;
+            patients = arr.map(fixPatient);
+            if (!save()) { patients = old; return; }
+            selectedId = null; mode = 'none'; refresh();
+            alert('تم استرجاع السجلات.');
+          }
+        } catch (err) { alert('هذا الملف ليس نسخة احتياطية صالحة.'); }
+        fileI.value = '';
+      };
+      r.readAsText(f);
+    });
+
+    return h('div', {},
+      h('button', { type: 'button', class: 'btn back', text: '→ رجوع للقائمة', onclick: back }),
+      h('div', { class: 'card' },
+        h('h2', { text: 'النسخة الاحتياطية' }),
+        h('p', { class: 'meta', text: patients.length + ' مريض · ' + exams + ' فحص' }),
+        h('p', { class: 'meta', text: last ? 'آخر نسخة: ' + new Date(last).toLocaleDateString('en-GB') : 'لم تُحفظ نسخة بعد' }),
+        h('p', { class: 'notes', text: 'السجلات محفوظة داخل متصفح هذا الجهاز فقط. إذا مُسحت بيانات المتصفح أو تعطّل الجهاز ضاعت السجلات، لذلك احفظ نسخة كل أسبوع وأرسلها لنفسك على واتساب أو انسخها إلى مكان آخر.' }),
+        h('div', { class: 'form-actions', style: 'margin-top:1rem' },
+          h('button', { type: 'button', class: 'btn btn-primary', text: 'تنزيل نسخة احتياطية', onclick: downloadBackup }))),
+      h('div', { class: 'card' },
+        h('h3', { text: 'استرجاع من نسخة' }),
+        h('p', { class: 'hint', text: 'اختر ملف النسخة الاحتياطية (.json). سيحل محل السجلات الحالية.' }),
+        h('div', { style: 'height:.6rem' }),
+        fileI));
+  }
+
+  function downloadBackup() {
+    var data = { app: 'aldiqqa-patients', version: 1, exported: new Date().toISOString(), patients: patients };
+    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'aldiqqa-backup-' + today() + '.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+    try { localStorage.setItem(BK, String(Date.now())); } catch (e) {}
+    updateNote();
+  }
+
+  function renderDetail() {
+    detailEl.textContent = '';
+    var p = getPatient(selectedId);
+    if (mode === 'backup') detailEl.appendChild(backupView());
+    else if (mode === 'newPatient') detailEl.appendChild(patientForm(null));
+    else if (!p) detailEl.appendChild(h('div', { class: 'card' }, h('h3', { text: 'اختر مريضاً من القائمة' }), h('p', { class: 'hint', text: 'أو اضغط «+ مريض جديد» لإضافة ملف جديد وتسجيل فحصه.' })));
+    else if (mode === 'editPatient') detailEl.appendChild(patientForm(p));
+    else if (mode === 'exam') {
+      var ex = null;
+      if (editingExamId) for (var i = 0; i < p.exams.length; i++) if (p.exams[i].id === editingExamId) ex = p.exams[i];
+      detailEl.appendChild(examForm(p, ex));
+    } else detailEl.appendChild(viewPatient(p));
+  }
+
+  function refresh() {
+    document.body.classList.toggle('detail-open', mode !== 'none');
+    renderList();
+    renderDetail();
+    updateNote();
+    window.scrollTo(0, 0);
+  }
+  function select(id) { selectedId = id; editingExamId = null; mode = 'view'; refresh(); }
+  function back() { selectedId = null; editingExamId = null; mode = 'none'; refresh(); }
+
+  /* ---------- events ---------- */
+  searchEl.addEventListener('input', function () { query = searchEl.value; renderList(); });
+  document.getElementById('btnNew').addEventListener('click', function () { selectedId = null; mode = 'newPatient'; refresh(); });
+  document.getElementById('btnBackup').addEventListener('click', function () { mode = 'backup'; refresh(); });
+  noteEl.addEventListener('click', function () { mode = 'backup'; refresh(); });
+
+  load();
+  refresh();
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+})();
+</script>
+</body>
+</html>
