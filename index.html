@@ -104,6 +104,19 @@
   .rrow { display: flex; flex-wrap: wrap; gap: .6rem 1rem; justify-content: space-between; align-items: center; }
   .rrow small { display: block; color: var(--muted); }
 
+  .glasses { display: flex; flex-wrap: wrap; gap: .5rem 1rem; justify-content: space-between; align-items: center; margin-top: .9rem; padding-top: .8rem; border-top: 1px dashed var(--line); }
+  .ok { color: var(--accent); font-weight: 600; }
+  .flag { color: var(--accent); font-weight: 600; }
+  .check { display: flex; align-items: center; gap: .6rem; font-weight: 500; margin: .25rem 0 1rem; cursor: pointer; }
+  .check input { width: 1.4rem; height: 1.4rem; accent-color: var(--accent); }
+  canvas.examimg { display: block; width: 100%; max-width: 34rem; height: auto; border: 1px solid var(--line); border-radius: 8px; margin: 0 auto; background: #fff; }
+
+  .lock { position: fixed; inset: 0; z-index: 100; background: var(--bg); display: grid; place-items: center; padding: 1rem; }
+  .lockcard { width: min(22rem, 100%); text-align: center; margin: 0; }
+  .lockcard .inp { text-align: center; letter-spacing: .4em; font-size: 1.4rem; margin: .75rem 0; }
+  .lockcard .error { min-height: 1.6rem; margin: 0 0 .5rem; }
+  body.locked .bar, body.locked .cols, body.locked .foot { display: none; }
+
   .foot { color: var(--muted); font-size: .85rem; padding: 1rem 1.25rem 2rem; text-align: center; }
 
   @media (max-width: 52rem) {
@@ -119,13 +132,24 @@
 </head>
 <body>
 
+<div class="lock" id="lock" hidden>
+  <form class="card lockcard" id="lockForm" novalidate>
+    <h2>سجل فحوصات النظر</h2>
+    <p class="hint">أدخل الرمز السري للدخول</p>
+    <input class="inp ltr" id="lockPin" type="password" inputmode="numeric" autocomplete="off" aria-label="الرمز السري">
+    <p class="error" id="lockErr" role="alert"></p>
+    <button class="btn btn-primary" type="submit" style="width:100%">دخول</button>
+  </form>
+</div>
+
 <div class="bar">
   <h1>سجل فحوصات النظر</h1>
   <span class="shop">الدقة للبصريات</span>
   <div class="bar-actions">
     <button class="btn btn-primary" id="btnNew" type="button">+ مريض جديد</button>
     <button class="btn" id="btnRemind" type="button">التذكيرات<span class="badge" id="badge" hidden></span></button>
-    <button class="btn" id="btnBackup" type="button">نسخة احتياطية</button>
+    <button class="btn" id="btnBackup" type="button">الإعدادات</button>
+    <button class="btn" id="btnLock" type="button" hidden>🔒 قفل</button>
   </div>
 </div>
 
@@ -150,11 +174,26 @@
   var BK = 'aldiqqa_last_backup_v1';
   /* ===== إعدادات التذكير ===== */
   var REMIND_MONTHS = 6;   // عدد الأشهر بعد آخر فحص
+  var IDLE_MS = 5 * 60 * 1000;   // القفل التلقائي بعد 5 دقائق من عدم الاستخدام
   function remindMessage(p) {
     return 'السلام عليكم ' + p.name + '،\n' +
       'نذكّرك بأنه مرّت ' + REMIND_MONTHS + ' أشهر على آخر فحص نظر لك في الدقة للبصريات، وقد حان موعد إعادة الفحص للاطمئنان على سلامة نظرك.\n' +
       'يسعدنا استقبالك في مجمع نور العباس الطبي، كربلاء، من ٤ عصراً حتى ١٠ ليلاً.\n' +
       'للحجز رد على هذه الرسالة.';
+  }
+  var SHOP = {
+    name: 'الدقة للبصريات',
+    tagline: 'نظّارات طبية وفحص النظر',
+    address: 'كربلاء المقدسة، مجمع نور العباس الطبي، مجاور مستشفى العباس (ع) الأهلي',
+    phone: '07732906486',
+    hours: 'من الساعة 4:00 عصراً إلى الساعة 10:00 ليلاً'
+  };
+  function readyMessage(p) {
+    return 'السلام عليكم ' + p.name + '،\n' +
+      'تم اكتمال عمل النظارة، يرجى التوجه إلى العيادة لغرض الاستلام.\n' +
+      'مع الشكر والتقدير.\n\n' +
+      SHOP.name + '\n' +
+      'أوقات الدوام: ' + SHOP.hours + '.';
   }
   /* ========================== */
 
@@ -173,6 +212,14 @@
   var noteEl = document.getElementById('note');
   var noteDueEl = document.getElementById('noteDue');
   var badgeEl = document.getElementById('badge');
+  var lockEl = document.getElementById('lock');
+  var lockForm = document.getElementById('lockForm');
+  var lockPinEl = document.getElementById('lockPin');
+  var lockErrEl = document.getElementById('lockErr');
+  var btnLockEl = document.getElementById('btnLock');
+  var PIN_KEY = 'aldiqqa_pin_v1', FAIL_KEY = 'aldiqqa_pin_fail_v1', UNL = 'aldiqqa_unlocked';
+  var lastActive = Date.now();
+  var started = false;
   var searchEl = document.getElementById('search');
   var idCounter = 0;
 
@@ -349,7 +396,8 @@
         onclick: function () { select(p.id); } },
         h('b', { text: p.name }),
         p.phone ? h('span', { class: 'ltr', style: 'text-align:right', text: p.phone }) : null,
-        h('span', { text: meta }));
+        h('span', { text: meta }),
+        (ex.length && ex[0].done && !ex[0].notified) ? h('span', { class: 'flag', text: 'نظارة جاهزة · لم يُبلَّغ المريض' }) : null);
       listEl.appendChild(h('li', {}, btn));
     });
   }
@@ -361,6 +409,7 @@
     noteEl.textContent = last
       ? 'مرّ أكثر من أسبوع على آخر نسخة احتياطية. اضغط هنا لحفظ نسخة جديدة.'
       : 'لم تحفظ نسخة احتياطية بعد. اضغط هنا لحفظ نسخة.';
+    btnLockEl.hidden = !getPin();
     var n = allDue('due').length;
     badgeEl.hidden = !n;
     badgeEl.textContent = n;
@@ -387,10 +436,49 @@
     return h('div', { class: 'tablewrap' }, t);
   }
 
+  function openWhatsApp(phone, text) {
+    var wa = waLink(phone);
+    if (!wa) { alert('لا يوجد رقم هاتف صالح لهذا المريض.'); return false; }
+    var a = document.createElement('a');
+    a.href = wa + '?text=' + encodeURIComponent(text);
+    a.target = '_blank'; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+    return true;
+  }
+
+  function glassesRow(p, e) {
+    var row = h('div', { class: 'glasses' });
+    var acts = h('div', { class: 'actions' });
+    if (!e.done) {
+      row.appendChild(h('span', { text: 'النظارة: قيد العمل' }));
+      acts.appendChild(h('button', { type: 'button', class: 'btn btn-small', text: 'تم عمل النظارة ✓', onclick: function () {
+        e.done = true; e.doneDate = today(); p.updated = Date.now();
+        if (save()) refresh(true);
+      } }));
+    } else {
+      row.appendChild(h('span', { class: 'ok', text: 'النظارة جاهزة ✓' + (e.doneDate ? ' (' + fmtDate(e.doneDate) + ')' : '') + (e.notified ? ' · أُرسل الإشعار ' + fmtDate(e.notified) : '') }));
+      if (waLink(p.phone)) {
+        acts.appendChild(h('button', { type: 'button', class: 'btn btn-small' + (e.notified ? '' : ' btn-primary'),
+          text: e.notified ? 'إرسال الإشعار مرة أخرى' : 'إرسال رسالة الاستلام', onclick: function () {
+            if (openWhatsApp(p.phone, readyMessage(p))) { e.notified = today(); save(); refresh(true); }
+          } }));
+      } else {
+        acts.appendChild(h('span', { class: 'hint', text: 'لا يوجد رقم هاتف' }));
+      }
+      acts.appendChild(h('button', { type: 'button', class: 'btn btn-small', text: 'إلغاء الجاهزية', onclick: function () {
+        e.done = false; e.doneDate = ''; e.notified = '';
+        if (save()) refresh(true);
+      } }));
+    }
+    row.appendChild(acts);
+    return row;
+  }
+
   function examCard(p, e, latest) {
     var top = h('div', { class: 'exam-top' },
       h('h3', {}, 'فحص ', h('span', { class: 'ltr', text: fmtDate(e.date) }), latest ? h('span', { class: 'tag', text: 'الأحدث' }) : null),
       h('div', { class: 'actions' },
+        h('button', { type: 'button', class: 'btn btn-small', text: 'صورة الفحص', onclick: function () { editingExamId = e.id; mode = 'image'; refresh(); } }),
         h('button', { type: 'button', class: 'btn btn-small', text: 'تعديل', onclick: function () { editingExamId = e.id; mode = 'exam'; refresh(); } }),
         h('button', { type: 'button', class: 'btn btn-small btn-danger', text: 'حذف', onclick: function () {
           if (confirm('حذف فحص ' + fmtDate(e.date) + ' نهائياً؟')) {
@@ -406,6 +494,7 @@
       if (e.notes) ex.appendChild(h('span', {}, h('b', { text: 'ملاحظات: ' }), e.notes));
       card.appendChild(ex);
     }
+    card.appendChild(glassesRow(p, e));
     return card;
   }
 
@@ -543,6 +632,7 @@
     var dateI = h('input', { class: 'inp ltr', type: 'date', value: ex.date || today() });
     var pdI = h('input', { class: 'inp ltr', type: 'text', value: ex.pd || '', autocomplete: 'off', placeholder: '62' });
     var notesI = h('textarea', { class: 'inp', text: ex.notes || '' });
+    var doneCb = h('input', { type: 'checkbox', checked: !!ex.done });
 
     var t = h('table', { class: 'rx' });
     var trh = h('tr', {}, h('th', { text: '' }));
@@ -571,13 +661,15 @@
       h('div', { style: 'height:1rem' }),
       h('div', { class: 'grid2' }, field('PD (المسافة بين البؤبؤين)', pdI)),
       field('ملاحظات الفحص', notesI),
+      h('label', { class: 'check' }, doneCb, 'تم عمل النظارة'),
       h('div', { class: 'form-actions' },
         h('button', { type: 'submit', class: 'btn btn-primary', text: 'حفظ الفحص' }),
         h('button', { type: 'button', class: 'btn', text: 'إلغاء', onclick: function () { editingExamId = null; mode = 'view'; refresh(); } })));
 
     form.addEventListener('submit', function (ev) {
       ev.preventDefault();
-      var out = { id: e ? e.id : uid(), created: e ? e.created : Date.now(), date: dateI.value || today(), od: {}, os: {}, pd: pdI.value.trim(), notes: notesI.value.trim() };
+      var out = { id: e ? e.id : uid(), created: e ? e.created : Date.now(), date: dateI.value || today(), od: {}, os: {}, pd: pdI.value.trim(), notes: notesI.value.trim(),
+        done: doneCb.checked, doneDate: doneCb.checked ? ((e && e.doneDate) || today()) : '', notified: (e && e.notified) || '' };
       COLS.forEach(function (c) { out.od[c] = refs['od_' + c].value.trim(); out.os[c] = refs['os_' + c].value.trim(); });
       if (e) {
         for (var i = 0; i < p.exams.length; i++) if (p.exams[i].id === e.id) p.exams[i] = out;
@@ -586,6 +678,299 @@
       }
       p.updated = Date.now();
       if (save()) { editingExamId = null; mode = 'view'; refresh(); }
+    });
+    return form;
+  }
+
+  /* ---------- exam image ---------- */
+  function wrapLines(c, text, maxW) {
+    var words = String(text).replace(/\s+/g, ' ').trim().split(' '), lines = [], cur = '';
+    words.forEach(function (w) {
+      var t = cur ? cur + ' ' + w : w;
+      if (c.measureText(t).width > maxW && cur) { lines.push(cur); cur = w; } else cur = t;
+    });
+    if (cur) lines.push(cur);
+    return lines;
+  }
+
+  function drawExamImage(p, e, cv) {
+    var W = 1080, H = 1350;
+    cv.width = W; cv.height = H;
+    var c = cv.getContext('2d');
+    var INK = '#15171A', MUTED = '#565C63', LINE = '#C9CED3', ACC = '#A4501A', ALT = '#EEF1F3';
+    var DISP = '"Noto Kufi Arabic","Segoe UI",Tahoma,sans-serif';
+    var BODY = '"IBM Plex Sans Arabic","Segoe UI",Tahoma,Arial,sans-serif';
+    var R = W - 70;
+
+    function txt(s, x, y, font, color, align, dir) {
+      c.font = font; c.fillStyle = color; c.textAlign = align || 'right';
+      c.direction = dir || 'rtl'; c.textBaseline = 'alphabetic';
+      c.fillText(s, x, y);
+    }
+
+    c.fillStyle = '#FFFFFF'; c.fillRect(0, 0, W, H);
+    c.fillStyle = ACC; c.fillRect(0, 0, W, 16);
+
+    // glasses icon
+    c.strokeStyle = ACC; c.lineWidth = 8; c.lineCap = 'round';
+    c.beginPath(); c.arc(112, 100, 34, 0, Math.PI * 2); c.stroke();
+    c.beginPath(); c.arc(194, 100, 34, 0, Math.PI * 2); c.stroke();
+    c.beginPath(); c.moveTo(144, 92); c.quadraticCurveTo(153, 84, 162, 92); c.stroke();
+
+    txt(SHOP.name, R, 104, '800 58px ' + DISP, INK);
+    txt(SHOP.tagline, R, 154, '400 28px ' + BODY, MUTED);
+    c.strokeStyle = LINE; c.lineWidth = 2;
+    c.beginPath(); c.moveTo(70, 196); c.lineTo(W - 70, 196); c.stroke();
+
+    txt('بطاقة فحص النظر', R, 276, '800 44px ' + DISP, INK);
+    txt('الاسم: ' + p.name, R, 350, '600 36px ' + BODY, INK);
+    txt('تاريخ الفحص: ' + fmtDate(e.date), 70, 350, '400 30px ' + BODY, MUTED, 'left');
+    var ty = 400;
+    if (p.age) { txt('العمر: ' + p.age, R, 400, '400 30px ' + BODY, MUTED); ty = 445; }
+
+    // table (left-to-right like a standard Rx chart)
+    var tx = 70, labelW = 200, colW = 148, headH = 64, rowH = 96;
+    var tw = labelW + colW * 5;
+    c.fillStyle = ALT; c.fillRect(tx, ty, tw, headH);
+    for (var i = 0; i < 5; i++) txt(HEADS[i], tx + labelW + colW * i + colW / 2, ty + 43, '600 28px ' + BODY, INK, 'center', 'ltr');
+    [['od', 'يمنى', 'OD'], ['os', 'يسرى', 'OS']].forEach(function (eye, r) {
+      var y = ty + headH + rowH * r;
+      txt(eye[1], tx + labelW / 2, y + 44, '600 32px ' + BODY, INK, 'center');
+      txt(eye[2], tx + labelW / 2, y + 78, '400 22px ' + BODY, MUTED, 'center', 'ltr');
+      COLS.forEach(function (col, k) {
+        var v = (e[eye[0]] || {})[col];
+        txt(v ? v : '—', tx + labelW + colW * k + colW / 2, y + 62, '500 38px ' + BODY, v ? INK : MUTED, 'center', 'ltr');
+      });
+    });
+    var th = headH + rowH * 2;
+    c.strokeStyle = LINE; c.lineWidth = 2;
+    c.strokeRect(tx, ty, tw, th);
+    c.beginPath();
+    c.moveTo(tx, ty + headH); c.lineTo(tx + tw, ty + headH);
+    c.moveTo(tx, ty + headH + rowH); c.lineTo(tx + tw, ty + headH + rowH);
+    c.moveTo(tx + labelW, ty); c.lineTo(tx + labelW, ty + th);
+    for (var j = 1; j < 5; j++) { c.moveTo(tx + labelW + colW * j, ty); c.lineTo(tx + labelW + colW * j, ty + th); }
+    c.stroke();
+
+    var y = ty + th + 70;
+    if (e.pd) { txt('المسافة بين البؤبؤين PD: ' + e.pd, R, y, '600 32px ' + BODY, INK); y += 56; }
+    var nx = addMonths(e.date, REMIND_MONTHS);
+    if (nx) { txt('موعد إعادة الفحص المقترح: ' + fmtDate(nx), R, y, '600 32px ' + BODY, ACC); y += 60; }
+    if (e.notes) {
+      c.font = '400 30px ' + BODY; c.direction = 'rtl';
+      var lines = wrapLines(c, 'ملاحظات: ' + e.notes, tw).slice(0, 4);
+      lines.forEach(function (ln) { txt(ln, R, y, '400 30px ' + BODY, INK); y += 46; });
+    }
+
+    // legend
+    c.font = '400 24px ' + BODY; c.direction = 'rtl';
+    var legend = wrapLines(c, 'SPH: القوة الكروية · CYL: القوة الأسطوانية · AXIS: المحور · ADD: الإضافة للقراءة · VA: حدة البصر', tw);
+    var ly = H - 190 - 30 - (legend.length - 1) * 36;
+    legend.forEach(function (ln) { txt(ln, R, ly, '400 24px ' + BODY, MUTED); ly += 36; });
+
+    // footer
+    c.fillStyle = ALT; c.fillRect(0, H - 190, W, 190);
+    txt(SHOP.name, W / 2, H - 135, '800 34px ' + DISP, INK, 'center');
+    c.font = '400 25px ' + BODY; c.direction = 'rtl';
+    var fl = wrapLines(c, SHOP.address, tw).slice(0, 2), fy = H - 92;
+    fl.forEach(function (ln) { txt(ln, W / 2, fy, '400 25px ' + BODY, MUTED, 'center'); fy += 34; });
+    txt('الهاتف: ' + SHOP.phone + '   ·   الدوام ' + SHOP.hours, W / 2, fy + 2, '400 23px ' + BODY, MUTED, 'center');
+  }
+
+  function downloadBlob(blob, name) {
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+  }
+  function shareCanvas(cv, name) {
+    cv.toBlob(function (blob) {
+      if (!blob) { alert('تعذّر إنشاء الصورة.'); return; }
+      var file = null;
+      try { file = new File([blob], name, { type: 'image/png' }); } catch (err) {}
+      if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file], title: 'فحص النظر' }).catch(function () {});
+      } else {
+        downloadBlob(blob, name);
+        alert('تم حفظ الصورة في جهازك. أرفقها في محادثة المريض على واتساب.');
+      }
+    }, 'image/png');
+  }
+  function saveCanvas(cv, name) {
+    cv.toBlob(function (blob) { if (blob) downloadBlob(blob, name); }, 'image/png');
+  }
+
+  function imageView(p, e) {
+    var cv = h('canvas', { class: 'examimg' });
+    var fname = 'eye-exam-' + (e.date || today()) + '.png';
+    var acts = h('div', { class: 'actions' },
+      h('button', { type: 'button', class: 'btn btn-primary', text: 'مشاركة الصورة', onclick: function () { shareCanvas(cv, fname); } }),
+      h('button', { type: 'button', class: 'btn', text: 'حفظ في الجهاز', onclick: function () { saveCanvas(cv, fname); } }));
+    if (waLink(p.phone)) {
+      acts.appendChild(h('button', { type: 'button', class: 'btn', text: 'فتح محادثة المريض', onclick: function () { openWhatsApp(p.phone, ''); } }));
+    }
+    acts.appendChild(h('button', { type: 'button', class: 'btn', text: 'رجوع', onclick: function () { editingExamId = null; mode = 'view'; refresh(); } }));
+
+    var wrap = h('div', {},
+      h('div', { class: 'card' },
+        h('h2', { text: 'صورة الفحص — ' + p.name }),
+        h('p', { class: 'hint', text: 'اضغط «مشاركة الصورة» واختر واتساب ثم المريض. وإن لم تظهر نافذة المشاركة تُحفظ الصورة في جهازك، فأرفقها من محادثة المريض.' }),
+        h('div', { style: 'height:.5rem' }),
+        acts),
+      cv);
+    var draw = function () { drawExamImage(p, e, cv); };
+    draw();
+    if (document.fonts && document.fonts.load && window.Promise) {
+      var sample = 'الدقة للبصريات فحص النظر 0123';
+      Promise.all([
+        document.fonts.load('800 40px "Noto Kufi Arabic"', sample),
+        document.fonts.load('400 30px "IBM Plex Sans Arabic"', sample),
+        document.fonts.load('600 30px "IBM Plex Sans Arabic"', sample)
+      ]).then(draw, draw);
+    }
+    return wrap;
+  }
+
+  /* ---------- PIN lock ---------- */
+  function ssGet(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }
+  function ssSet(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} }
+  function ssDel(k) { try { sessionStorage.removeItem(k); } catch (e) {} }
+  function getPin() {
+    try { var r = localStorage.getItem(PIN_KEY); return r ? JSON.parse(r) : null; } catch (e) { return null; }
+  }
+  function cyrb53(str) {
+    var h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+    for (var i = 0, ch; i < str.length; i++) {
+      ch = str.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+  }
+  function hashPin(pin, salt, weak) {
+    var data = salt + ':' + pin;
+    if (!weak && window.crypto && crypto.subtle && window.TextEncoder && window.Promise) {
+      return crypto.subtle.digest('SHA-256', new TextEncoder().encode(data)).then(function (buf) {
+        return 's:' + Array.prototype.map.call(new Uint8Array(buf), function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+      });
+    }
+    return Promise.resolve('w:' + cyrb53(data));
+  }
+  function checkPin(pin) {
+    var cfg = getPin();
+    if (!cfg) return Promise.resolve(true);
+    return hashPin(pin, cfg.salt, cfg.hash.charAt(0) === 'w').then(function (hx) { return hx === cfg.hash; });
+  }
+  function setPin(pin) {
+    var salt = uid();
+    return hashPin(pin, salt, false).then(function (hx) {
+      try { localStorage.setItem(PIN_KEY, JSON.stringify({ salt: salt, hash: hx })); return true; } catch (e) { return false; }
+    });
+  }
+  function removePin() { try { localStorage.removeItem(PIN_KEY); } catch (e) {} }
+  function getFail() {
+    try { return JSON.parse(localStorage.getItem(FAIL_KEY) || '{"n":0,"until":0}'); } catch (e) { return { n: 0, until: 0 }; }
+  }
+  function setFail(f) { try { localStorage.setItem(FAIL_KEY, JSON.stringify(f)); } catch (e) {} }
+  function waitLeft() { return Math.max(0, Math.ceil((getFail().until - Date.now()) / 1000)); }
+  function tryPin(pin) {
+    var w = waitLeft();
+    if (w > 0) return Promise.resolve({ ok: false, wait: w });
+    return checkPin(pin).then(function (ok) {
+      if (ok) setFail({ n: 0, until: 0 });
+      else {
+        var f = getFail(); f.n = (f.n || 0) + 1;
+        if (f.n >= 5) { f.until = Date.now() + 30000; f.n = 0; }
+        setFail(f);
+      }
+      return { ok: ok, wait: waitLeft() };
+    });
+  }
+  function showLock() {
+    document.body.classList.add('locked');
+    lockEl.hidden = false;
+    lockPinEl.value = ''; lockErrEl.textContent = '';
+    setTimeout(function () { lockPinEl.focus(); }, 50);
+  }
+  function lockNow() {
+    ssDel(UNL);
+    listEl.textContent = ''; detailEl.textContent = ''; countEl.textContent = '';
+    noteEl.hidden = true; noteDueEl.hidden = true; badgeEl.hidden = true;
+    selectedId = null; editingExamId = null; mode = 'none'; query = ''; searchEl.value = '';
+    showLock();
+  }
+  function watchIdle() {
+    ['click', 'keydown', 'touchstart', 'input', 'scroll'].forEach(function (t) {
+      document.addEventListener(t, function () { lastActive = Date.now(); }, true);
+    });
+    function check() {
+      if (getPin() && ssGet(UNL) === '1' && Date.now() - lastActive > IDLE_MS) lockNow();
+    }
+    setInterval(check, 15000);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) check(); });
+  }
+  function start() {
+    document.body.classList.remove('locked');
+    lockEl.hidden = true;
+    refresh();
+    if (!started) { started = true; watchIdle(); }
+  }
+
+  function pinCard() {
+    var cfg = getPin();
+    function pinInput() { return h('input', { class: 'inp ltr', type: 'password', inputmode: 'numeric', autocomplete: 'off' }); }
+    var cur = pinInput(), n1 = pinInput(), n2 = pinInput();
+    var msg = h('p', { class: 'error', role: 'alert', hidden: true });
+    function say(t) { msg.textContent = t; msg.hidden = false; }
+    function newPin() {
+      var a = digits(n1.value), b = digits(n2.value);
+      if (a.length < 4 || a.length > 8) { say('الرمز يجب أن يكون من 4 إلى 8 أرقام.'); return null; }
+      if (a !== b) { say('الرمزان غير متطابقين.'); return null; }
+      return a;
+    }
+    function verifyCurrent(then) {
+      tryPin(digits(cur.value)).then(function (r) {
+        if (!r.ok) { say(r.wait > 0 ? 'محاولات كثيرة خاطئة. انتظر ' + r.wait + ' ثانية.' : 'الرمز الحالي غير صحيح.'); return; }
+        then();
+      });
+    }
+    var acts = h('div', { class: 'form-actions' },
+      h('button', { type: 'submit', class: 'btn btn-primary', text: cfg ? 'تغيير الرمز' : 'تفعيل القفل' }));
+    if (cfg) {
+      acts.appendChild(h('button', { type: 'button', class: 'btn', text: 'قفل الآن', onclick: lockNow }));
+      acts.appendChild(h('button', { type: 'button', class: 'btn btn-danger', text: 'إيقاف القفل', onclick: function () {
+        if (!cur.value) { say('اكتب الرمز الحالي أولاً.'); return; }
+        verifyCurrent(function () {
+          if (confirm('إيقاف القفل؟ سيفتح التطبيق بدون رمز على هذا الجهاز.')) { removePin(); ssDel(UNL); refresh(); }
+        });
+      } }));
+    }
+    var form = h('form', { class: 'card', novalidate: true },
+      h('h3', { text: 'القفل بالرمز السري' }),
+      h('p', { class: 'hint', text: cfg
+        ? 'القفل مفعّل على هذا الجهاز. يُطلب الرمز عند فتح التطبيق، ويُقفل تلقائياً بعد ' + Math.round(IDLE_MS / 60000) + ' دقائق من عدم الاستخدام.'
+        : 'غير مفعّل. فعّله حتى لا يستطيع من يمسك الجهاز فتح سجلات المرضى. الرمز خاص بهذا الجهاز فقط، وإذا نسيته لا يمكن استرجاعه، وقد تضطر لمسح بيانات المتصفح فتضيع السجلات إن لم تكن لديك نسخة احتياطية.' }),
+      h('div', { style: 'height:.5rem' }),
+      msg,
+      cfg ? field('الرمز الحالي', cur) : null,
+      field(cfg ? 'الرمز الجديد (4 إلى 8 أرقام)' : 'رمز جديد (4 إلى 8 أرقام)', n1),
+      field('تأكيد الرمز', n2),
+      acts);
+    form.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var np = newPin();
+      if (!np) return;
+      function go() {
+        setPin(np).then(function (ok) {
+          if (!ok) { say('تعذّر حفظ الرمز.'); return; }
+          ssSet(UNL, '1'); lastActive = Date.now();
+          alert('تم حفظ الرمز السري.');
+          refresh();
+        });
+      }
+      if (cfg) verifyCurrent(go); else go();
     });
     return form;
   }
@@ -630,7 +1015,8 @@
         h('h3', { text: 'استرجاع من نسخة' }),
         h('p', { class: 'hint', text: 'اختر ملف النسخة الاحتياطية (.json). سيحل محل السجلات الحالية.' }),
         h('div', { style: 'height:.6rem' }),
-        fileI));
+        fileI),
+      pinCard());
   }
 
   function downloadBackup() {
@@ -655,7 +1041,11 @@
     else if (mode === 'newPatient') detailEl.appendChild(patientForm(null));
     else if (!p) detailEl.appendChild(h('div', { class: 'card' }, h('h3', { text: 'اختر مريضاً من القائمة' }), h('p', { class: 'hint', text: 'أو اضغط «+ مريض جديد» لإضافة ملف جديد وتسجيل فحصه.' })));
     else if (mode === 'editPatient') detailEl.appendChild(patientForm(p));
-    else if (mode === 'exam') {
+    else if (mode === 'image') {
+      var ie = null;
+      for (var q = 0; q < p.exams.length; q++) if (p.exams[q].id === editingExamId) ie = p.exams[q];
+      if (ie) detailEl.appendChild(imageView(p, ie)); else detailEl.appendChild(viewPatient(p));
+    } else if (mode === 'exam') {
       var ex = null;
       if (editingExamId) for (var i = 0; i < p.exams.length; i++) if (p.exams[i].id === editingExamId) ex = p.exams[i];
       detailEl.appendChild(examForm(p, ex));
@@ -681,26 +1071,22 @@
   document.getElementById('btnRemind').addEventListener('click', function () { selectedId = null; mode = 'reminders'; refresh(); });
   noteDueEl.addEventListener('click', function () { selectedId = null; mode = 'reminders'; refresh(); });
 
+  btnLockEl.addEventListener('click', lockNow);
+  lockForm.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    tryPin(digits(lockPinEl.value)).then(function (r) {
+      if (r.ok) { ssSet(UNL, '1'); lastActive = Date.now(); start(); }
+      else {
+        lockPinEl.value = '';
+        lockErrEl.textContent = r.wait > 0 ? 'محاولات كثيرة خاطئة. انتظر ' + r.wait + ' ثانية.' : 'الرمز غير صحيح.';
+      }
+    });
+  });
+
   load();
-  refresh();
+  if (getPin() && ssGet(UNL) !== '1') showLock(); else start();
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
 })();
 </script>
 </body>
 </html>
-
-window.onload = function() {
-    let isAuthenticated = sessionStorage.getItem("isLoggedIn");
-    
-    if (!isAuthenticated) {
-        let password = prompt("يرجى إدخال رمز الدخول السري:");
-        // استبدل '1234' بكلمة السر الخاصة بك
-        if (password === "1234") { 
-            sessionStorage.setItem("isLoggedIn", "true");
-            alert("تم الدخول بنجاح");
-        } else {
-            alert("رمز الدخول غير صحيح!");
-            document.body.innerHTML = "<h2 style='text-align:center; margin-top:50px;'>عذراً، غير مصرح لك بالدخول.</h2>";
-        }
-    }
-};
