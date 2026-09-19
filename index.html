@@ -99,6 +99,11 @@
   .error { color: var(--danger); font-weight: 500; margin-bottom: .75rem; }
   .form-actions { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .5rem; }
 
+  .badge { display: inline-block; min-width: 1.4rem; padding: 0 .45rem; margin-inline-start: .4rem; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: .85rem; line-height: 1.5rem; text-align: center; }
+  .remind p { margin-bottom: .6rem; }
+  .rrow { display: flex; flex-wrap: wrap; gap: .6rem 1rem; justify-content: space-between; align-items: center; }
+  .rrow small { display: block; color: var(--muted); }
+
   .foot { color: var(--muted); font-size: .85rem; padding: 1rem 1.25rem 2rem; text-align: center; }
 
   @media (max-width: 52rem) {
@@ -119,6 +124,7 @@
   <span class="shop">الدقة للبصريات</span>
   <div class="bar-actions">
     <button class="btn btn-primary" id="btnNew" type="button">+ مريض جديد</button>
+    <button class="btn" id="btnRemind" type="button">التذكيرات<span class="badge" id="badge" hidden></span></button>
     <button class="btn" id="btnBackup" type="button">نسخة احتياطية</button>
   </div>
 </div>
@@ -126,6 +132,7 @@
 <div class="cols">
   <aside class="list-col">
     <input class="inp" id="search" type="search" placeholder="ابحث بالاسم أو رقم الهاتف" autocomplete="off" aria-label="بحث عن مريض">
+    <button class="note" id="noteDue" type="button" hidden></button>
     <button class="note" id="note" type="button" hidden></button>
     <div class="count" id="count" aria-live="polite"></div>
     <ul class="plist" id="plist"></ul>
@@ -141,6 +148,16 @@
 
   var KEY = 'aldiqqa_patients_v1';
   var BK = 'aldiqqa_last_backup_v1';
+  /* ===== إعدادات التذكير ===== */
+  var REMIND_MONTHS = 6;   // عدد الأشهر بعد آخر فحص
+  function remindMessage(p) {
+    return 'السلام عليكم ' + p.name + '،\n' +
+      'نذكّرك بأنه مرّت ' + REMIND_MONTHS + ' أشهر على آخر فحص نظر لك في الدقة للبصريات، وقد حان موعد إعادة الفحص للاطمئنان على سلامة نظرك.\n' +
+      'يسعدنا استقبالك في مجمع نور العباس الطبي، كربلاء، من ٤ عصراً حتى ١٠ ليلاً.\n' +
+      'للحجز رد على هذه الرسالة.';
+  }
+  /* ========================== */
+
   var COLS = ['sph', 'cyl', 'axis', 'add', 'va'];
   var HEADS = ['SPH', 'CYL', 'AXIS', 'ADD', 'VA'];
 
@@ -154,6 +171,8 @@
   var detailEl = document.getElementById('detail');
   var countEl = document.getElementById('count');
   var noteEl = document.getElementById('note');
+  var noteDueEl = document.getElementById('noteDue');
+  var badgeEl = document.getElementById('badge');
   var searchEl = document.getElementById('search');
   var idCounter = 0;
 
@@ -198,6 +217,20 @@
   function fmtDate(iso) {
     var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
     return m ? m[3] + '/' + m[2] + '/' + m[1] : (iso || '');
+  }
+  function isoOf(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function addMonths(iso, n) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+    if (!m) return null;
+    var y = +m[1], mo = +m[2] - 1 + n, day = +m[3];
+    var last = new Date(y, mo + 1, 0).getDate();
+    return isoOf(new Date(y, mo, Math.min(day, last)));
+  }
+  function addDays(iso, n) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+    return isoOf(new Date(+m[1], +m[2] - 1, +m[3] + n));
   }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function waLink(phone) {
@@ -251,6 +284,43 @@
     try { return Number(localStorage.getItem(BK) || 0); } catch (e) { return 0; }
   }
 
+  /* ---------- reminders ---------- */
+  function dueInfo(p) {
+    var last = sortedExams(p)[0];
+    if (!last || !last.date) return null;
+    var due = addMonths(last.date, REMIND_MONTHS);
+    if (!due) return null;
+    var status;
+    if (p.noRemind) status = 'off';
+    else if (p.reminded && p.reminded.examId === last.id) status = 'sent';
+    else if (due <= today()) status = 'due';
+    else if (due <= addDays(today(), 30)) status = 'soon';
+    else status = 'later';
+    return { p: p, last: last, due: due, status: status };
+  }
+  function allDue(status) {
+    var out = [];
+    patients.forEach(function (p) { var i = dueInfo(p); if (i && i.status === status) out.push(i); });
+    out.sort(function (a, b) { return a.due.localeCompare(b.due); });
+    return out;
+  }
+  function sendReminder(i) {
+    var wa = waLink(i.p.phone);
+    if (!wa) { alert('لا يوجد رقم هاتف صالح لهذا المريض.'); return; }
+    var a = document.createElement('a');
+    a.href = wa + '?text=' + encodeURIComponent(remindMessage(i.p));
+    a.target = '_blank'; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+    i.p.reminded = { examId: i.last.id, date: today() };
+    save();
+    refresh(true);
+  }
+  function dismissReminder(i) {
+    i.p.reminded = { examId: i.last.id, date: today(), dismissed: true };
+    save();
+    refresh(true);
+  }
+
   /* ---------- rendering: list ---------- */
   function renderList() {
     var q = norm(query);
@@ -291,6 +361,11 @@
     noteEl.textContent = last
       ? 'مرّ أكثر من أسبوع على آخر نسخة احتياطية. اضغط هنا لحفظ نسخة جديدة.'
       : 'لم تحفظ نسخة احتياطية بعد. اضغط هنا لحفظ نسخة.';
+    var n = allDue('due').length;
+    badgeEl.hidden = !n;
+    badgeEl.textContent = n;
+    noteDueEl.hidden = !n;
+    noteDueEl.textContent = n + (n === 1 ? ' مريض حان موعد إعادة فحصه.' : ' مرضى حان موعد إعادة فحصهم.') + ' اضغط هنا لإرسال التذكير.';
   }
 
   /* ---------- rendering: detail ---------- */
@@ -334,6 +409,54 @@
     return card;
   }
 
+  function remindCard(p) {
+    var i = dueInfo(p);
+    if (!i) return null;
+    var txt;
+    if (i.status === 'off') txt = 'تذكير إعادة الفحص متوقف لهذا المريض.';
+    else if (i.status === 'sent') txt = 'تم التذكير بتاريخ ' + fmtDate(p.reminded.date) + ' (موعد إعادة الفحص ' + fmtDate(i.due) + ').';
+    else if (i.status === 'due') txt = 'حان موعد إعادة الفحص (منذ ' + fmtDate(i.due) + ').';
+    else txt = 'موعد إعادة الفحص القادم: ' + fmtDate(i.due) + '.';
+    var acts = h('div', { class: 'actions' });
+    if (i.status !== 'off' && waLink(p.phone)) {
+      acts.appendChild(h('button', { type: 'button', class: 'btn btn-small' + (i.status === 'due' ? ' btn-primary' : ''),
+        text: i.status === 'sent' ? 'إرسال تذكير مرة أخرى' : 'إرسال تذكير واتساب', onclick: function () { sendReminder(i); } }));
+    }
+    acts.appendChild(h('button', { type: 'button', class: 'btn btn-small', text: p.noRemind ? 'تفعيل التذكير' : 'إيقاف التذكير',
+      onclick: function () { p.noRemind = !p.noRemind; save(); refresh(true); } }));
+    return h('div', { class: 'card remind' }, h('p', { text: txt }), acts);
+  }
+
+  function reminderRow(i, canSend) {
+    var acts = h('div', { class: 'actions' });
+    if (canSend) {
+      if (waLink(i.p.phone)) acts.appendChild(h('button', { type: 'button', class: 'btn btn-small btn-primary', text: 'إرسال تذكير واتساب', onclick: function () { sendReminder(i); } }));
+      else acts.appendChild(h('span', { class: 'hint', text: 'لا يوجد رقم هاتف' }));
+      acts.appendChild(h('button', { type: 'button', class: 'btn btn-small', text: 'تجاهل', onclick: function () { dismissReminder(i); } }));
+    }
+    acts.appendChild(h('button', { type: 'button', class: 'btn btn-small', text: 'فتح الملف', onclick: function () { select(i.p.id); } }));
+    return h('div', { class: 'card rrow' },
+      h('div', {}, h('b', { text: i.p.name }),
+        h('small', { text: 'آخر فحص: ' + fmtDate(i.last.date) + ' · موعد الإعادة: ' + fmtDate(i.due) })),
+      acts);
+  }
+
+  function remindersView() {
+    var due = allDue('due'), soon = allDue('soon');
+    var wrap = h('div', {},
+      h('button', { type: 'button', class: 'btn back', text: '→ رجوع للقائمة', onclick: back }),
+      h('div', { class: 'card' },
+        h('h2', { text: 'تذكيرات إعادة الفحص' }),
+        h('p', { class: 'hint', text: 'التذكير يُحسب بعد ' + REMIND_MONTHS + ' أشهر من آخر فحص. اضغط «إرسال تذكير واتساب» فيفتح واتساب برسالة جاهزة للمريض، ثم اضغط إرسال هناك. لا يمكن للتطبيق إرسال الرسالة بدون أن تضغط أنت.' })));
+    wrap.appendChild(h('h3', { class: 'section-title', text: 'حان موعدهم (' + due.length + ')' }));
+    if (!due.length) wrap.appendChild(h('p', { class: 'empty', text: 'لا يوجد مرضى حان موعد إعادة فحصهم حالياً.' }));
+    due.forEach(function (i) { wrap.appendChild(reminderRow(i, true)); });
+    wrap.appendChild(h('h3', { class: 'section-title', text: 'خلال 30 يوماً القادمة (' + soon.length + ')' }));
+    if (!soon.length) wrap.appendChild(h('p', { class: 'empty', text: 'لا يوجد.' }));
+    soon.forEach(function (i) { wrap.appendChild(reminderRow(i, false)); });
+    return wrap;
+  }
+
   function viewPatient(p) {
     var wrap = h('div');
     wrap.appendChild(h('button', { type: 'button', class: 'btn back', text: '→ رجوع للقائمة', onclick: back }));
@@ -360,6 +483,8 @@
           } }))));
     if (p.notes) head.appendChild(h('p', { class: 'notes', text: 'ملاحظات: ' + p.notes }));
     wrap.appendChild(head);
+    var rc = remindCard(p);
+    if (rc) wrap.appendChild(rc);
 
     wrap.appendChild(h('h3', { class: 'section-title', text: 'الفحوصات' }));
     var exams = sortedExams(p);
@@ -526,6 +651,7 @@
     detailEl.textContent = '';
     var p = getPatient(selectedId);
     if (mode === 'backup') detailEl.appendChild(backupView());
+    else if (mode === 'reminders') detailEl.appendChild(remindersView());
     else if (mode === 'newPatient') detailEl.appendChild(patientForm(null));
     else if (!p) detailEl.appendChild(h('div', { class: 'card' }, h('h3', { text: 'اختر مريضاً من القائمة' }), h('p', { class: 'hint', text: 'أو اضغط «+ مريض جديد» لإضافة ملف جديد وتسجيل فحصه.' })));
     else if (mode === 'editPatient') detailEl.appendChild(patientForm(p));
@@ -536,12 +662,13 @@
     } else detailEl.appendChild(viewPatient(p));
   }
 
-  function refresh() {
+  function refresh(keepScroll) {
+    var y = window.pageYOffset;
     document.body.classList.toggle('detail-open', mode !== 'none');
     renderList();
     renderDetail();
     updateNote();
-    window.scrollTo(0, 0);
+    window.scrollTo(0, keepScroll === true ? y : 0);
   }
   function select(id) { selectedId = id; editingExamId = null; mode = 'view'; refresh(); }
   function back() { selectedId = null; editingExamId = null; mode = 'none'; refresh(); }
@@ -551,6 +678,8 @@
   document.getElementById('btnNew').addEventListener('click', function () { selectedId = null; mode = 'newPatient'; refresh(); });
   document.getElementById('btnBackup').addEventListener('click', function () { mode = 'backup'; refresh(); });
   noteEl.addEventListener('click', function () { mode = 'backup'; refresh(); });
+  document.getElementById('btnRemind').addEventListener('click', function () { selectedId = null; mode = 'reminders'; refresh(); });
+  noteDueEl.addEventListener('click', function () { selectedId = null; mode = 'reminders'; refresh(); });
 
   load();
   refresh();
