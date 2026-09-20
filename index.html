@@ -502,11 +502,38 @@
   function writeDrafts(d) { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(d)); } catch (e) {} }
   function setDraft(key, obj) { var d = readDrafts(); obj.ts = Date.now(); d[key] = obj; writeDrafts(d); }
   function delDraft(key) { var d = readDrafts(); if (d[key]) { delete d[key]; writeDrafts(d); } }
+  // هل المسودة مكرّرة لما هو محفوظ فعلاً أو لم يعد لها معنى؟ إن كانت كذلك تُحذف تلقائياً
+  function sameExam(v, e) {
+    var ok = (v.date || '') === (e.date || '') && (v.add || '').trim() === (e.add || '') &&
+      (v.pd || '').trim() === (e.pd || '') && (v.notes || '').trim() === (e.notes || '') && !!v.done === !!e.done;
+    COLS.forEach(function (c) {
+      if (((v.od || {})[c] || '').trim() !== ((e.od || {})[c] || '')) ok = false;
+      if (((v.os || {})[c] || '').trim() !== ((e.os || {})[c] || '')) ok = false;
+    });
+    return ok;
+  }
+  function draftIsStale(x) {
+    if (!x || !x.v) return true;
+    var v = x.v;
+    if (x.type === 'patient') {
+      var name = (v.name || '').trim(), phone = (v.phone || '').trim();
+      if (x.pid) {
+        var p = getPatient(x.pid);
+        return !p || (name === p.name && phone === p.phone && (v.age || '').trim() === p.age && (v.notes || '').trim() === p.notes);
+      }
+      if (!name && !phone && !(v.age || '').trim() && !(v.notes || '').trim()) return true;
+      return patients.some(function (q) { return q.name === name && q.phone === phone; });
+    }
+    var pt = getPatient(x.pid);
+    if (!pt) return true;
+    if (x.eid && !pt.exams.some(function (e) { return e.id === x.eid; })) return true;
+    return pt.exams.some(function (e) { return (!x.eid || e.id === x.eid) && sameExam(v, e); });
+  }
   function draftList() {
-    var d = readDrafts(), out = [], cut = Date.now() - 14 * 86400000, changed = false;
+    var d = readDrafts(), out = [], cut = Date.now() - 3 * 86400000, changed = false;
     Object.keys(d).forEach(function (k) {
       var x = d[k];
-      if (!x || x.ts < cut || (x.pid && !getPatient(x.pid))) { delete d[k]; changed = true; return; }
+      if (!x || x.ts < cut || draftIsStale(x)) { delete d[k]; changed = true; return; }
       out.push({ key: k, d: x });
     });
     if (changed) writeDrafts(d);
@@ -608,7 +635,7 @@
     var inForm = (mode === 'newPatient' || mode === 'editPatient' || mode === 'exam');
     var dl = draftList();
     noteDraftEl.hidden = !(dl.length && !inForm);
-    noteDraftEl.textContent = 'لديك ' + (dl.length === 1 ? 'مسودة غير محفوظة' : dl.length + ' مسودات غير محفوظة') + ' (لم تضغط «حفظ»). اضغط هنا لاسترجاعها.';
+    noteDraftEl.textContent = 'لديك ' + (dl.length === 1 ? 'مسودة غير محفوظة' : dl.length + ' مسودات غير محفوظة') + ' (لم تضغط «حفظ»). اضغط هنا لاسترجاعها أو حذفها.';
     btnLockEl.hidden = !getPin();
     var n = allDue('due').length;
     badgeEl.hidden = !n;
@@ -691,7 +718,7 @@
     var card = h('article', { class: 'card' }, top, rxTable(e));
     if (e.add || e.pd || e.notes) {
       var ex = h('p', { class: 'extra' });
-      if (e.add) ex.appendChild(h('span', {}, h('b', { text: 'ADD (الإضافة للقراءة): ' }), h('span', { class: 'ltr', text: e.add + '   ' })));
+      if (e.add) ex.appendChild(h('span', {}, h('b', { text: 'ADD (الإضافة للقراءة): ' }), h('span', { class: 'ltr', text: addSign(e.add) + '   ' })));
       if (e.pd) ex.appendChild(h('span', {}, h('b', { text: 'PD: ' }), h('span', { class: 'ltr', text: e.pd + '   ' })));
       if (e.notes) ex.appendChild(h('span', {}, h('b', { text: 'ملاحظات: ' }), e.notes));
       card.appendChild(ex);
@@ -786,9 +813,21 @@
   }
 
   /* ---------- numeric inputs ---------- */
+  // يعرض الإضافة بإشارة + (للقيم القديمة المحفوظة بدون إشارة)
+  function addSign(v) {
+    v = String(v || '').trim();
+    return /^\d/.test(v) ? '+' + v : v;
+  }
   function cleanNum(v, kind) {
     v = arDigits(v).replace(/[\u060C\u066B,]/g, '.').replace(/[\u2212\u2013\u2014]/g, '-');
     if (kind === 'int') return v.replace(/\D/g, '').slice(0, 3);
+    if (kind === 'add') {
+      if (/[\/\s]/.test(v)) return v;               // قيمة قديمة مركّبة: لا تُعدَّل
+      v = v.replace(/[^0-9.]/g, '');
+      var j = v.indexOf('.');
+      if (j > -1) v = v.slice(0, j + 1) + v.slice(j + 1).replace(/\./g, '');
+      return v ? '+' + v : '';                       // إضافة + تلقائياً
+    }
     var sign = '';
     if (kind === 'dec' && /^[+\-]/.test(v.trim())) sign = v.trim().charAt(0);
     v = v.replace(/[^0-9.]/g, '');
@@ -895,8 +934,10 @@
     var refs = {}, order = [];
 
     var dateI = h('input', { class: 'inp ltr', type: 'date', value: ex.date || today() });
-    var addI = numInput('dec', ex.add, 'ADD الإضافة للقراءة');
+    var addI = numInput('add', addSign(ex.add), 'ADD الإضافة للقراءة');
     var pdI = numInput('pos', ex.pd, 'PD');
+    addI.style.width = '6.5rem';   // مستطيل صغير لـ 3-4 أرقام
+    pdI.style.width = '5rem';      // مستطيل صغير لرقمين
     var notesI = h('textarea', { class: 'inp', text: ex.notes || '' });
     var doneCb = h('input', { type: 'checkbox', checked: !!ex.done });
     var vaList = h('datalist', { id: 'vaList' });
@@ -953,9 +994,9 @@
       vaList,
       h('p', { class: 'hint', text: 'SPH: القوة الكروية · CYL: القوة الأسطوانية · AXIS: المحور · UCVA: حدة البصر بدون نظارة (قبل) · BCVA: حدة البصر بعد النظارة (أفضل تصحيح). الزر «+ / −» يبدّل إشارة الرقم.' }),
       h('div', { style: 'height:1rem' }),
-      h('div', { class: 'grid2' },
-        decField('ADD — الإضافة البصرية للقراءة (للعينين)', addI, true),
-        decField('PD — المسافة بين البؤبؤين', pdI, false)),
+      h('div', { style: 'display:flex;justify-content:space-between;direction:ltr;gap:1rem' },
+        decField('ADD', addI, false),
+        decField('PD', pdI, false)),
       field('ملاحظات الفحص', notesI),
       h('label', { class: 'check' }, doneCb, 'تم عمل النظارة'),
       h('div', { class: 'form-actions' },
@@ -1037,9 +1078,11 @@
     c.beginPath(); c.moveTo(144, 92); c.quadraticCurveTo(153, 84, 162, 92); c.stroke();
 
     txt(SHOP.name, R, 104, '800 58px ' + DISP, INK);
-    txt(SHOP.tagline, R, 154, '400 28px ' + BODY, MUTED);
+    c.font = '400 26px ' + BODY; c.direction = 'rtl';
+    var tl = wrapLines(c, SHOP.tagline, R - 270).slice(0, 2);   // العبارة الطويلة تُقسم على سطرين
+    tl.forEach(function (ln, i) { txt(ln, R, 152 + i * 34, '400 26px ' + BODY, MUTED); });
     c.strokeStyle = LINE; c.lineWidth = 2;
-    c.beginPath(); c.moveTo(70, 196); c.lineTo(W - 70, 196); c.stroke();
+    c.beginPath(); c.moveTo(70, 216); c.lineTo(W - 70, 216); c.stroke();
 
     txt('بطاقة فحص النظر', R, 276, '800 44px ' + DISP, INK);
     txt('الاسم: ' + p.name, R, 350, '600 36px ' + BODY, INK);
@@ -1072,7 +1115,7 @@
     c.stroke();
 
     var y = ty + th + 70;
-    if (e.add) { txt('الإضافة للقراءة ADD: ' + e.add, R, y, '600 32px ' + BODY, INK); y += 56; }
+    if (e.add) { txt('الإضافة للقراءة ADD: ' + addSign(e.add), R, y, '600 32px ' + BODY, INK); y += 56; }
     if (e.pd) { txt('المسافة بين البؤبؤين PD: ' + e.pd, R, y, '600 32px ' + BODY, INK); y += 56; }
     var nx = addMonths(e.date, REMIND_MONTHS);
     if (nx) { txt('موعد إعادة الفحص المقترح: ' + fmtDate(nx), R, y, '600 32px ' + BODY, ACC); y += 60; }
@@ -1117,6 +1160,36 @@
       }
     }, 'image/png');
   }
+  // يرسل صورة الفحص: إن دعم المتصفح المشاركة يفتح نافذتها، وإلا يحفظ الصورة ويفتح واتساب المريض
+  function sendExamImage(cv, name, phone, msg) {
+    cv.toBlob(function (blob) {
+      if (!blob) { alert('تعذّر إنشاء الصورة.'); return; }
+      var file = null;
+      try { file = new File([blob], name, { type: 'image/png' }); } catch (err) {}
+      if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file], title: 'فحص النظر' }).catch(function () {});
+        return;
+      }
+      downloadBlob(blob, name);                                    // 1) حفظ الصورة في الجهاز
+      setTimeout(function () { openWhatsApp(phone, msg); }, 900);  // 2) فتح واتساب المريض
+    }, 'image/png');
+  }
+
+  // نص نتيجة الفحص لإرساله كرسالة
+  function examText(p, e) {
+    function line(label, o) {
+      return label + ': SPH ' + (o.sph || '-') + ' | CYL ' + (o.cyl || '-') + ' | AXIS ' + (o.axis || '-') +
+        ' | UCVA ' + (o.ucva || '-') + ' | BCVA ' + (o.bcva || '-');
+    }
+    var t = 'السلام عليكم ' + p.name + '،\nنتيجة فحص النظر بتاريخ ' + fmtDate(e.date) + ':\n\n' +
+      line('اليمنى OD', e.od || {}) + '\n' + line('اليسرى OS', e.os || {});
+    if (e.add) t += '\nADD: ' + addSign(e.add);
+    if (e.pd) t += '\nPD: ' + e.pd;
+    var nx = addMonths(e.date, REMIND_MONTHS);
+    if (nx) t += '\n\nموعد إعادة الفحص المقترح: ' + fmtDate(nx);
+    return t + '\n\n' + SHOP.name;
+  }
+
   function saveCanvas(cv, name) {
     cv.toBlob(function (blob) { if (blob) downloadBlob(blob, name); }, 'image/png');
   }
@@ -1125,17 +1198,19 @@
     var cv = h('canvas', { class: 'examimg' });
     var fname = 'eye-exam-' + (e.date || today()) + '.png';
     var acts = h('div', { class: 'actions' },
-      h('button', { type: 'button', class: 'btn btn-primary', text: 'مشاركة الصورة', onclick: function () { shareCanvas(cv, fname); } }),
+      h('button', { type: 'button', class: 'btn btn-primary', text: 'إرسال الصورة على واتساب', onclick: function () {
+        sendExamImage(cv, fname, p.phone, 'السلام عليكم ' + p.name + '،\nمرفق نسخة من فحص النظر للاحتفاظ بها.\n' + SHOP.name);
+      } }),
       h('button', { type: 'button', class: 'btn', text: 'حفظ في الجهاز', onclick: function () { saveCanvas(cv, fname); } }));
     if (waLink(p.phone)) {
-      acts.appendChild(h('button', { type: 'button', class: 'btn', text: 'فتح محادثة المريض', onclick: function () { openWhatsApp(p.phone, ''); } }));
+      acts.appendChild(h('button', { type: 'button', class: 'btn', text: 'إرسال النتيجة كنصّ على واتساب', onclick: function () { openWhatsApp(p.phone, examText(p, e)); } }));
     }
     acts.appendChild(h('button', { type: 'button', class: 'btn', text: 'رجوع', onclick: function () { editingExamId = null; mode = 'view'; refresh(); } }));
 
     var wrap = h('div', {},
       h('div', { class: 'card' },
         h('h2', { text: 'صورة الفحص — ' + p.name }),
-        h('p', { class: 'hint', text: 'اضغط «مشاركة الصورة» واختر واتساب ثم المريض. وإن لم تظهر نافذة المشاركة تُحفظ الصورة في جهازك، فأرفقها من محادثة المريض.' }),
+        h('p', { class: 'hint', text: 'اضغط «إرسال الصورة على واتساب». إن ظهرت نافذة المشاركة اختر واتساب ثم المريض. وإن لم تظهر تُحفظ الصورة في جهازك ثم يُفتح واتساب المريض تلقائياً، فاضغط علامة المشبك 📎 واختر الصورة وأرسلها.' }),
         h('div', { style: 'height:.5rem' }),
         acts),
       cv);
@@ -1433,7 +1508,12 @@
   document.getElementById('btnRemind').addEventListener('click', function () { selectedId = null; mode = 'reminders'; refresh(); });
   noteDueEl.addEventListener('click', function () { selectedId = null; mode = 'reminders'; refresh(); });
 
-  noteDraftEl.addEventListener('click', function () { var l = draftList(); if (l.length) openDraft(l[0]); });
+  noteDraftEl.addEventListener('click', function () {
+    var l = draftList();
+    if (!l.length) { refresh(true); return; }
+    if (confirm('لديك مسودة لم تُحفظ. اضغط «موافق» لاسترجاعها، أو «إلغاء» للخيارات الأخرى.')) openDraft(l[0]);
+    else if (confirm('هل تريد حذف هذه المسودة نهائياً؟ (موافق = حذف، إلغاء = إبقاؤها)')) { delDraft(l[0].key); refresh(true); }
+  });
   document.addEventListener('visibilitychange', function () { if (document.hidden && flushDraft) flushDraft(); });
   window.addEventListener('pagehide', function () { if (flushDraft) flushDraft(); });
   // another window/tab changed the records: pick up its changes
