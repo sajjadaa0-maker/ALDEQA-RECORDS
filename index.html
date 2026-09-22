@@ -118,6 +118,26 @@
   body.locked .bar, body.locked .cols, body.locked .foot { display: none; }
 
   .sign { width: 100%; margin-top: .3rem; min-height: 2.3rem; padding: .1rem .3rem; font-size: .9rem; }
+
+  .btn-whatsapp { background: #25D366; border-color: #25D366; color: #fff; }
+  .btn-whatsapp:hover { filter: brightness(1.08); }
+
+  .card.ext { border-color: #7FC3EE; box-shadow: inset 0 0 0 1px #7FC3EE; background: rgba(14, 148, 233, .06); }
+  .ext-badge { display: inline-block; margin-inline-start: .6rem; padding: .05rem .6rem; font-size: .8rem; border-radius: 999px; background: #0EA5E9; color: #fff; font-family: var(--body); font-weight: 600; }
+  .src-row { color: #0369A1; margin-top: .3rem; }
+  :root:not([data-theme="light"]) .src-row { color: #38BDF8; }
+
+  .home { text-align: center; padding: 1.5rem 1rem 1rem; }
+  .home .icon { font-size: 3.2rem; margin-bottom: .4rem; }
+  .home h2 { font-family: var(--display); font-size: 1.5rem; margin-bottom: .35rem; }
+  .home p { color: var(--muted); margin-bottom: 1.4rem; }
+  .home .btn-primary { min-height: 3.3rem; padding: .9rem 2rem; font-size: 1.05rem; }
+
+  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: .9rem; margin-top: 1.5rem; text-align: center; }
+  @media (min-width: 40rem) { .stats { grid-template-columns: repeat(3, 1fr); } }
+  .stat { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 1rem .5rem; }
+  .stat b { display: block; font-family: var(--display); font-size: 1.7rem; color: var(--accent); }
+  .stat span { color: var(--muted); font-size: .82rem; }
   .decrow { display: flex; gap: .5rem; align-items: stretch; }
   .decrow .sign { width: auto; margin: 0; min-width: 5.2rem; }
 
@@ -150,7 +170,7 @@
   <h1>سجل فحوصات النظر</h1>
   <span class="shop">الدقة للبصريات</span>
   <div class="bar-actions">
-    <button class="btn btn-primary" id="btnNew" type="button">+ مريض جديد</button>
+    <button class="btn" id="btnHome" type="button">🏠 الشاشة الرئيسية</button>
     <button class="btn" id="btnRemind" type="button">التذكيرات<span class="badge" id="badge" hidden></span></button>
     <button class="btn" id="btnBackup" type="button">الإعدادات</button>
     <button class="btn" id="btnLock" type="button" hidden>🔒 قفل</button>
@@ -205,6 +225,26 @@
   var COLS = ['sph', 'cyl', 'axis', 'ucva', 'bcva'];
   var HEADS = ['SPH', 'CYL', 'AXIS', 'UCVA', 'BCVA'];
   var VA_OPTS = ['6/6', '6/9', '6/12', '6/18', '6/24', '6/36', '6/60', 'CF', 'HM', 'PL', 'NPL'];
+  var SOURCE_OPTS = ['مستشفى', 'مستوصف صحي', 'عيادة خارجية أخرى', 'حسب طلب الزبون', 'درجة نظارة قديمة'];
+
+  // تفعيل العمل بلا إنترنت: بعد أول فتح متصل، يُخزَّن شكل الصفحة في الجهاز فتفتح لاحقاً بدون إنترنت
+  (function enableOffline() {
+    try {
+      if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
+      var swSrc = "var CACHE='aldiqqa-offline-v1';" +
+        "self.addEventListener('install',function(e){self.skipWaiting();});" +
+        "self.addEventListener('activate',function(e){e.waitUntil(self.clients.claim());});" +
+        "self.addEventListener('fetch',function(e){" +
+          "if(e.request.method!=='GET')return;" +
+          "e.respondWith(caches.open(CACHE).then(function(c){" +
+            "return fetch(e.request).then(function(r){ if(r&&r.ok) c.put(e.request,r.clone()); return r; })" +
+            ".catch(function(){ return c.match(e.request).then(function(m){ return m||c.match(self.registration.scope); }); });" +
+          "}));" +
+        "});";
+      var swUrl = URL.createObjectURL(new Blob([swSrc], { type: 'text/javascript' }));
+      navigator.serviceWorker.register(swUrl).catch(function () {});
+    } catch (e2) {}
+  })();
 
   var patients = [];
   var selectedId = null;
@@ -316,6 +356,7 @@
     });
     if (legacy.length) e.notes = (e.notes ? e.notes + '\n' : '') + 'VA سابق: ' + legacy.join('، ');
     e.add = e.add || ''; e.pd = e.pd || ''; e.notes = e.notes || '';
+    e.external = !!e.external; e.source = e.source || '';
     e.mod = e.mod || e.created || 0;
     return e;
   }
@@ -703,7 +744,9 @@
 
   function examCard(p, e, latest) {
     var top = h('div', { class: 'exam-top' },
-      h('h3', {}, 'فحص ', h('span', { class: 'ltr', text: fmtDate(e.date) }), latest ? h('span', { class: 'tag', text: 'الأحدث' }) : null),
+      h('h3', {}, 'فحص ', h('span', { class: 'ltr', text: fmtDate(e.date) }),
+        latest ? h('span', { class: 'tag', text: 'الأحدث' }) : null,
+        e.external ? h('span', { class: 'ext-badge', text: 'فحص خارجي' }) : null),
       h('div', { class: 'actions' },
         h('button', { type: 'button', class: 'btn btn-small', text: 'صورة الفحص', onclick: function () { editingExamId = e.id; mode = 'image'; refresh(); } }),
         h('button', { type: 'button', class: 'btn btn-small', text: 'تعديل', onclick: function () { editingExamId = e.id; mode = 'exam'; refresh(); } }),
@@ -715,9 +758,11 @@
             if (save()) refresh();
           }
         } })));
-    var card = h('article', { class: 'card' }, top, rxTable(e));
-    if (e.add || e.pd || e.notes) {
+    var card = h('article', { class: 'card' + (e.external ? ' ext' : '') }, top, rxTable(e));
+    if (e.add || e.pd || e.notes || (e.external && e.source)) {
       var ex = h('p', { class: 'extra' });
+      if (e.external && e.source) ex.appendChild(h('span', { class: 'src-row' }, h('b', { text: 'تم الفحص من: ' }), e.source));
+      if (e.external && e.source) ex.appendChild(document.createElement('br'));
       if (e.add) ex.appendChild(h('span', {}, h('b', { text: 'ADD (الإضافة للقراءة): ' }), h('span', { class: 'ltr', text: addSign(e.add) + '   ' })));
       if (e.pd) ex.appendChild(h('span', {}, h('b', { text: 'PD: ' }), h('span', { class: 'ltr', text: e.pd + '   ' })));
       if (e.notes) ex.appendChild(h('span', {}, h('b', { text: 'ملاحظات: ' }), e.notes));
@@ -792,6 +837,7 @@
         h('div', {}, h('h2', { text: p.name }), meta),
         h('div', { class: 'actions' },
           h('button', { type: 'button', class: 'btn btn-primary', text: '+ فحص جديد', onclick: function () { editingExamId = null; mode = 'exam'; refresh(); } }),
+          h('button', { type: 'button', class: 'btn', text: '+ نظارة من فحص خارجي', onclick: function () { editingExamId = null; mode = 'examExt'; refresh(); } }),
           h('button', { type: 'button', class: 'btn', text: 'تعديل البيانات', onclick: function () { mode = 'editPatient'; refresh(); } }),
           h('button', { type: 'button', class: 'btn btn-danger', text: 'حذف المريض', onclick: function () {
             if (confirm('حذف ملف المريض «' + p.name + '» وكل فحوصاته نهائياً؟')) {
@@ -926,9 +972,10 @@
     return form;
   }
 
-  function examForm(p, e) {
+  function examForm(p, e, forceExternal) {
     var isNew = !e;
-    var ex = e || { date: today(), od: {}, os: {}, add: '', pd: '', notes: '' };
+    var isExternal = !!(forceExternal || (e && e.external));
+    var ex = e || { date: today(), od: {}, os: {}, add: '', pd: '', notes: '', external: false, source: '' };
     var pid = p.id, eid = e ? e.id : null;
     var dkey = 'e:' + pid + ':' + (eid || 'new');
     var refs = {}, order = [];
@@ -940,6 +987,9 @@
     pdI.style.width = '5rem';      // مستطيل صغير لرقمين
     var notesI = h('textarea', { class: 'inp', text: ex.notes || '' });
     var doneCb = h('input', { type: 'checkbox', checked: !!ex.done });
+    var sourceI = h('input', { class: 'inp', type: 'text', list: 'srcList', autocomplete: 'off', value: ex.source || '', placeholder: 'مثال: مستشفى الحسين التعليمي' });
+    var srcList = h('datalist', { id: 'srcList' });
+    SOURCE_OPTS.forEach(function (o) { srcList.appendChild(h('option', { value: o })); });
     var vaList = h('datalist', { id: 'vaList' });
     VA_OPTS.forEach(function (o) { vaList.appendChild(h('option', { value: o })); });
 
@@ -970,7 +1020,7 @@
     order.push(addI); order.push(pdI);
 
     function collect() {
-      var v = { date: dateI.value, od: {}, os: {}, add: addI.value, pd: pdI.value, notes: notesI.value, done: doneCb.checked };
+      var v = { date: dateI.value, od: {}, os: {}, add: addI.value, pd: pdI.value, notes: notesI.value, done: doneCb.checked, source: sourceI.value };
       COLS.forEach(function (c) { v.od[c] = refs['od_' + c].value; v.os[c] = refs['os_' + c].value; });
       return v;
     }
@@ -981,14 +1031,16 @@
         var v = dr.v;
         if (v.date) dateI.value = v.date;
         COLS.forEach(function (c) { refs['od_' + c].value = (v.od || {})[c] || ''; refs['os_' + c].value = (v.os || {})[c] || ''; });
-        addI.value = v.add || ''; pdI.value = v.pd || ''; notesI.value = v.notes || ''; doneCb.checked = !!v.done;
+        addI.value = v.add || ''; pdI.value = v.pd || ''; notesI.value = v.notes || ''; doneCb.checked = !!v.done; sourceI.value = v.source || '';
       } else delDraft(dkey);
     }
     pendingRestore = null;
 
-    var form = h('form', { class: 'card', novalidate: true },
-      h('h2', { text: (isNew ? 'فحص جديد' : 'تعديل الفحص') + ' — ' + p.name }),
+    var form = h('form', { class: 'card' + (isExternal ? ' ext' : ''), novalidate: true },
+      h('h2', { text: (isExternal ? 'بطاقة تجهيز نظارة — فحص خارجي' : (isNew ? 'فحص جديد' : 'تعديل الفحص')) + ' — ' + p.name }),
       h('div', { style: 'height:1rem' }),
+      isExternal ? field('تم الفحص من', sourceI) : null,
+      isExternal ? srcList : null,
       field('تاريخ الفحص', dateI),
       h('div', { class: 'tablewrap' }, t),
       vaList,
@@ -1032,6 +1084,7 @@
       if (eid) for (var i = 0; i < pp.exams.length; i++) if (pp.exams[i].id === eid) prev = pp.exams[i];
       var out = { id: eid || uid(), created: prev ? prev.created : Date.now(), date: dateI.value || today(), od: {}, os: {},
         add: addI.value.trim(), pd: pdI.value.trim(), notes: notesI.value.trim(),
+        external: isExternal, source: isExternal ? sourceI.value.trim() : '',
         done: doneCb.checked, doneDate: doneCb.checked ? ((prev && prev.doneDate) || today()) : '', notified: (prev && prev.notified) || '', mod: Date.now() };
       COLS.forEach(function (c) { out.od[c] = refs['od_' + c].value.trim(); out.os[c] = refs['os_' + c].value.trim(); });
       if (prev) pp.exams[pp.exams.indexOf(prev)] = out; else pp.exams.push(out);
@@ -1054,7 +1107,7 @@
   }
 
   function drawExamImage(p, e, cv) {
-    var W = 1080, H = 1420;
+    var W = 1080, H = 1470;
     cv.width = W; cv.height = H;
     var c = cv.getContext('2d');
     var INK = '#15171A', MUTED = '#565C63', LINE = '#C9CED3', ACC = '#A4501A', ALT = '#EEF1F3';
@@ -1069,7 +1122,7 @@
     }
 
     c.fillStyle = '#FFFFFF'; c.fillRect(0, 0, W, H);
-    c.fillStyle = ACC; c.fillRect(0, 0, W, 16);
+    c.fillStyle = e.external ? '#0EA5E9' : ACC; c.fillRect(0, 0, W, 16);
 
     // glasses icon
     c.strokeStyle = ACC; c.lineWidth = 8; c.lineCap = 'round';
@@ -1084,11 +1137,13 @@
     c.strokeStyle = LINE; c.lineWidth = 2;
     c.beginPath(); c.moveTo(70, 216); c.lineTo(W - 70, 216); c.stroke();
 
-    txt('بطاقة فحص النظر', R, 276, '800 44px ' + DISP, INK);
-    txt('الاسم: ' + p.name, R, 350, '600 36px ' + BODY, INK);
-    txt('تاريخ الفحص: ' + fmtDate(e.date), 70, 350, '400 30px ' + BODY, MUTED, 'left');
-    var ty = 400;
-    if (p.age) { txt('العمر: ' + p.age, R, 400, '400 30px ' + BODY, MUTED); ty = 445; }
+    txt(e.external ? 'بطاقة تجهيز نظارة (فحص خارجي)' : 'بطاقة فحص النظر', R, 276, '800 40px ' + DISP, INK);
+    var hOff = 0;
+    if (e.external) { txt('تم الفحص من: ' + (e.source || '—'), R, 314, '600 26px ' + BODY, '#0284C7'); hOff = 42; }
+    txt('الاسم: ' + p.name, R, 350 + hOff, '600 36px ' + BODY, INK);
+    txt('تاريخ الفحص: ' + fmtDate(e.date), 70, 350 + hOff, '400 30px ' + BODY, MUTED, 'left');
+    var ty = 400 + hOff;
+    if (p.age) { txt('العمر: ' + p.age, R, 400 + hOff, '400 30px ' + BODY, MUTED); ty = 445 + hOff; }
 
     // table (left-to-right like a standard Rx chart)
     var tx = 70, labelW = 200, colW = 148, headH = 64, rowH = 96;
@@ -1198,19 +1253,16 @@
     var cv = h('canvas', { class: 'examimg' });
     var fname = 'eye-exam-' + (e.date || today()) + '.png';
     var acts = h('div', { class: 'actions' },
-      h('button', { type: 'button', class: 'btn btn-primary', text: 'إرسال الصورة على واتساب', onclick: function () {
-        sendExamImage(cv, fname, p.phone, 'السلام عليكم ' + p.name + '،\nمرفق نسخة من فحص النظر للاحتفاظ بها.\n' + SHOP.name);
-      } }),
       h('button', { type: 'button', class: 'btn', text: 'حفظ في الجهاز', onclick: function () { saveCanvas(cv, fname); } }));
     if (waLink(p.phone)) {
-      acts.appendChild(h('button', { type: 'button', class: 'btn', text: 'إرسال النتيجة كنصّ على واتساب', onclick: function () { openWhatsApp(p.phone, examText(p, e)); } }));
+      acts.appendChild(h('button', { type: 'button', class: 'btn btn-whatsapp', text: '💬 فتح محادثة المريض على واتساب', onclick: function () { openWhatsApp(p.phone, ''); } }));
     }
     acts.appendChild(h('button', { type: 'button', class: 'btn', text: 'رجوع', onclick: function () { editingExamId = null; mode = 'view'; refresh(); } }));
 
     var wrap = h('div', {},
       h('div', { class: 'card' },
         h('h2', { text: 'صورة الفحص — ' + p.name }),
-        h('p', { class: 'hint', text: 'اضغط «إرسال الصورة على واتساب». إن ظهرت نافذة المشاركة اختر واتساب ثم المريض. وإن لم تظهر تُحفظ الصورة في جهازك ثم يُفتح واتساب المريض تلقائياً، فاضغط علامة المشبك 📎 واختر الصورة وأرسلها.' }),
+        h('p', { class: 'hint', text: 'اضغط «حفظ في الجهاز» أولاً لتنزيل الصورة، ثم اضغط «فتح محادثة المريض على واتساب» واضغط علامة المشبك 📎 داخل واتساب واختر الصورة من الجهاز وأرسلها.' }),
         h('div', { style: 'height:.5rem' }),
         acts),
       cv);
@@ -1476,7 +1528,8 @@
     if (mode === 'backup') detailEl.appendChild(backupView());
     else if (mode === 'reminders') detailEl.appendChild(remindersView());
     else if (mode === 'newPatient') detailEl.appendChild(patientForm(null));
-    else if (!p) detailEl.appendChild(h('div', { class: 'card' }, h('h3', { text: 'اختر مريضاً من القائمة' }), h('p', { class: 'hint', text: 'أو اضغط «+ مريض جديد» لإضافة ملف جديد وتسجيل فحصه.' })));
+    else if (!p) detailEl.appendChild(homeView());
+    else if (mode === 'examExt') detailEl.appendChild(examForm(p, null, true));
     else if (mode === 'editPatient') detailEl.appendChild(patientForm(p));
     else if (mode === 'image') {
       var ie = null;
@@ -1487,6 +1540,39 @@
       if (editingExamId) for (var i = 0; i < p.exams.length; i++) if (p.exams[i].id === editingExamId) ex = p.exams[i];
       detailEl.appendChild(examForm(p, ex));
     } else detailEl.appendChild(viewPatient(p));
+  }
+
+  function computeStats() {
+    var totalExams = 0, pending = 0, readyNotNotified = 0, examsToday = 0;
+    var todayStr = today();
+    patients.forEach(function (p) {
+      p.exams.forEach(function (e) {
+        totalExams++;
+        if (!e.done) pending++;
+        if (e.done && !e.notified) readyNotNotified++;
+        if (e.date === todayStr) examsToday++;
+      });
+    });
+    return { totalPatients: patients.length, totalExams: totalExams, pending: pending,
+      readyNotNotified: readyNotNotified, examsToday: examsToday, dueToday: allDue('due').length };
+  }
+  function homeView() {
+    var s = computeStats();
+    function stat(n, label) { return h('div', { class: 'stat' }, h('b', { text: String(n) }), h('span', { text: label })); }
+    return h('div', {},
+      h('div', { class: 'card home' },
+        h('div', { class: 'icon' }, '👓'),
+        h('h2', { text: 'مرحباً بك في سجل فحوصات النظر' }),
+        h('p', { text: SHOP.name + ' — أضف مريضاً جديداً أو اختر مريضاً من القائمة على اليمين' }),
+        h('button', { type: 'button', class: 'btn btn-primary', text: '+ إضافة مريض جديد', onclick: function () { selectedId = null; mode = 'newPatient'; refresh(); } }),
+        h('h3', { class: 'section-title', text: 'إحصائيات سريعة' }),
+        h('div', { class: 'stats' },
+          stat(s.totalPatients, 'إجمالي المرضى'),
+          stat(s.totalExams, 'إجمالي الفحوصات'),
+          stat(s.pending, 'نظارات قيد العمل'),
+          stat(s.readyNotNotified, 'جاهزة لم يُبلَّغ المريض'),
+          stat(s.examsToday, 'فحوصات اليوم'),
+          stat(s.dueToday, 'تذكيرات مستحقة اليوم'))));
   }
 
   function refresh(keepScroll) {
@@ -1502,7 +1588,7 @@
 
   /* ---------- events ---------- */
   searchEl.addEventListener('input', function () { query = searchEl.value; renderList(); });
-  document.getElementById('btnNew').addEventListener('click', function () { selectedId = null; mode = 'newPatient'; refresh(); });
+  document.getElementById('btnHome').addEventListener('click', function () { back(); });
   document.getElementById('btnBackup').addEventListener('click', function () { mode = 'backup'; refresh(); });
   noteEl.addEventListener('click', function () { mode = 'backup'; refresh(); });
   document.getElementById('btnRemind').addEventListener('click', function () { selectedId = null; mode = 'reminders'; refresh(); });
