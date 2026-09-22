@@ -138,6 +138,11 @@
   .stat { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 1rem .5rem; }
   .stat b { display: block; font-family: var(--display); font-size: 1.7rem; color: var(--accent); }
   .stat span { color: var(--muted); font-size: .82rem; }
+
+  .addpd { display: inline-flex; flex-direction: column; gap: .7rem; }
+  .lensrow { margin-top: 1rem; }
+  .copyrow { margin-bottom: 1rem; }
+  .pin-mask { -webkit-text-security: disc; text-security: disc; }
   .decrow { display: flex; gap: .5rem; align-items: stretch; }
   .decrow .sign { width: auto; margin: 0; min-width: 5.2rem; }
 
@@ -157,10 +162,10 @@
 <body>
 
 <div class="lock" id="lock" hidden>
-  <form class="card lockcard" id="lockForm" novalidate>
+  <form class="card lockcard" id="lockForm" novalidate autocomplete="off">
     <h2>سجل فحوصات النظر</h2>
     <p class="hint">أدخل الرمز السري للدخول</p>
-    <input class="inp ltr" id="lockPin" type="password" inputmode="numeric" autocomplete="off" aria-label="الرمز السري">
+    <input class="inp ltr pin-mask" id="lockPin" type="text" inputmode="numeric" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="الرمز السري">
     <p class="error" id="lockErr" role="alert"></p>
     <button class="btn btn-primary" type="submit" style="width:100%">دخول</button>
   </form>
@@ -226,6 +231,7 @@
   var HEADS = ['SPH', 'CYL', 'AXIS', 'UCVA', 'BCVA'];
   var VA_OPTS = ['6/6', '6/9', '6/12', '6/18', '6/24', '6/36', '6/60', 'CF', 'HM', 'PL', 'NPL'];
   var SOURCE_OPTS = ['مستشفى', 'مستوصف صحي', 'عيادة خارجية أخرى', 'حسب طلب الزبون', 'درجة نظارة قديمة'];
+  var LENS_OPTS = ['ملتي كوت', 'بلوكات أخضر', 'بلوكت أزرق', 'فوتو بلاستك', 'فوتو بلوكات', 'فوتو زجاج', 'أخرى'];
 
   // تفعيل العمل بلا إنترنت: بعد أول فتح متصل، يُخزَّن شكل الصفحة في الجهاز فتفتح لاحقاً بدون إنترنت
   (function enableOffline() {
@@ -357,6 +363,7 @@
     if (legacy.length) e.notes = (e.notes ? e.notes + '\n' : '') + 'VA سابق: ' + legacy.join('، ');
     e.add = e.add || ''; e.pd = e.pd || ''; e.notes = e.notes || '';
     e.external = !!e.external; e.source = e.source || '';
+    e.lens = e.lens || ''; e.price = parseInt(e.price, 10) || 0;
     e.mod = e.mod || e.created || 0;
     return e;
   }
@@ -759,12 +766,14 @@
           }
         } })));
     var card = h('article', { class: 'card' + (e.external ? ' ext' : '') }, top, rxTable(e));
-    if (e.add || e.pd || e.notes || (e.external && e.source)) {
+    if (e.add || e.pd || e.notes || (e.external && e.source) || e.lens || e.price) {
       var ex = h('p', { class: 'extra' });
-      if (e.external && e.source) ex.appendChild(h('span', { class: 'src-row' }, h('b', { text: 'تم الفحص من: ' }), e.source));
+      if (e.external && e.source) ex.appendChild(h('span', { class: 'src-row' }, h('b', { text: 'تم الفحص في: ' }), e.source));
       if (e.external && e.source) ex.appendChild(document.createElement('br'));
       if (e.add) ex.appendChild(h('span', {}, h('b', { text: 'ADD (الإضافة للقراءة): ' }), h('span', { class: 'ltr', text: addSign(e.add) + '   ' })));
       if (e.pd) ex.appendChild(h('span', {}, h('b', { text: 'PD: ' }), h('span', { class: 'ltr', text: e.pd + '   ' })));
+      if (e.lens) ex.appendChild(h('span', {}, h('b', { text: 'نوع العدسة: ' }), e.lens + '   '));
+      if (e.price) ex.appendChild(h('span', {}, h('b', { text: 'السعر: ' }), h('span', { class: 'ltr', text: fmtIQD(e.price) + ' د.ع' })));
       if (e.notes) ex.appendChild(h('span', {}, h('b', { text: 'ملاحظات: ' }), e.notes));
       card.appendChild(ex);
     }
@@ -881,6 +890,43 @@
     if (i > -1) v = v.slice(0, i + 1) + v.slice(i + 1).replace(/\./g, '');
     return sign + v;
   }
+  // يحوّل الاختصار الذي يكتبه المستخدم (مثل 5 أو 15.5) إلى سعر كامل بالدينار العراقي
+  function shorthandToIQD(raw) {
+    raw = arDigits(raw).replace(/[\u060C\u066B,]/g, '.').replace(/[^0-9.]/g, '');
+    if (!raw) return 0;
+    var parts = raw.split('.');
+    var whole = parseInt(parts[0] || '0', 10) || 0;
+    var frac = (parts[1] || '').slice(0, 3);
+    while (frac.length && frac.length < 3) frac += '0';
+    return whole * 1000 + (frac ? parseInt(frac, 10) : 0);
+  }
+  function iqdToShorthand(n) {
+    n = parseInt(n, 10) || 0;
+    if (!n) return '';
+    var whole = Math.floor(n / 1000), rem = n % 1000;
+    if (!rem) return String(whole);
+    var frac = String(rem).padStart(3, '0').replace(/0+$/, '');
+    return whole + (frac ? '.' + frac : '');
+  }
+  function fmtIQD(n) { return (parseInt(n, 10) || 0).toLocaleString('en-US'); }
+  // يقرأ حقل السعر سواء كان معروضاً بصيغة مختصرة (أثناء الكتابة) أو منسّقاً بفواصل (بعد الخروج من الحقل)
+  function parsePriceField(inp) {
+    var raw = String(inp.value || '').trim();
+    if (!raw) return 0;
+    if (raw.indexOf(',') > -1 || /د\.ع/.test(raw)) return parseInt(arDigits(raw).replace(/[^0-9]/g, ''), 10) || 0;
+    return shorthandToIQD(raw);
+  }
+  function priceInput(value) {
+    var inp = h('input', { class: 'inp ltr', type: 'text', inputmode: 'decimal', autocomplete: 'off',
+      'aria-label': 'سعر النظارة بالدينار العراقي', value: value ? fmtIQD(value) + ' د.ع' : '' });
+    inp.addEventListener('focus', function () { var v = parsePriceField(inp); inp.value = v ? iqdToShorthand(v) : ''; inp.select(); });
+    inp.addEventListener('blur', function () {
+      var v = parsePriceField(inp);
+      inp.value = v ? fmtIQD(v) + ' د.ع' : '';
+      inp.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    return inp;
+  }
   function numInput(kind, value, label) {
     var inp = h('input', { class: 'inp ltr rxin', type: 'text', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false',
       inputmode: kind === 'int' ? 'numeric' : 'decimal', enterkeyhint: 'next', 'aria-label': label, value: value || '' });
@@ -888,6 +934,25 @@
       var c = cleanNum(inp.value, kind);
       if (c !== inp.value) inp.value = c;
     });
+    if (kind === 'dec' || kind === 'add') {
+      // عند الخروج من الحقل: إتمام العدد إلى مرتبتين عشريتين (وعلامة + دائماً لحقل الإضافة البصرية)
+      inp.addEventListener('blur', function () {
+        var v = inp.value.trim();
+        if (!v || v === '+' || v === '-') return;
+        var sign = '';
+        if (v.charAt(0) === '+' || v.charAt(0) === '-') { sign = v.charAt(0); v = v.slice(1); }
+        if (kind === 'add') sign = '+';
+        if (v.indexOf('.') === -1) v = (v || '0') + '.00';
+        else {
+          var parts = v.split('.');
+          var frac = parts[1].slice(0, 2);
+          while (frac.length < 2) frac += '0';
+          v = (parts[0] || '0') + '.' + frac;
+        }
+        inp.value = sign + v;
+        inp.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    }
     return inp;
   }
   function signBtn(inp) {
@@ -902,6 +967,10 @@
     var row = h('div', { class: 'decrow' }, inp);
     if (withSign) row.appendChild(signBtn(inp));
     return h('div', { class: 'field' }, h('label', { 'for': inp.id, text: label }), row);
+  }
+  function field2(label, inp) {
+    idCounter++; inp.id = 'f' + idCounter;
+    return h('div', { class: 'field' }, h('label', { 'for': inp.id, text: label }), inp);
   }
 
   function patientForm(p) {
@@ -924,7 +993,7 @@
     }
     pendingRestore = null;
 
-    var form = h('form', { class: 'card', novalidate: true },
+    var form = h('form', { class: 'card', novalidate: true, autocomplete: 'off' },
       h('h2', { text: isNew ? 'مريض جديد' : 'تعديل بيانات المريض' }),
       h('div', { style: 'height:1rem' }),
       err,
@@ -975,23 +1044,51 @@
   function examForm(p, e, forceExternal) {
     var isNew = !e;
     var isExternal = !!(forceExternal || (e && e.external));
-    var ex = e || { date: today(), od: {}, os: {}, add: '', pd: '', notes: '', external: false, source: '' };
+    var ex = e || { date: today(), od: {}, os: {}, add: '', pd: '', notes: '', external: false, source: '', lens: '', price: 0 };
     var pid = p.id, eid = e ? e.id : null;
     var dkey = 'e:' + pid + ':' + (eid || 'new');
     var refs = {}, order = [];
 
-    var dateI = h('input', { class: 'inp ltr', type: 'date', value: ex.date || today() });
+    var dateI = h('input', { class: 'inp ltr', type: 'date', value: ex.date || today(), autocomplete: 'off' });
     var addI = numInput('add', addSign(ex.add), 'ADD الإضافة للقراءة');
     var pdI = numInput('pos', ex.pd, 'PD');
     addI.style.width = '6.5rem';   // مستطيل صغير لـ 3-4 أرقام
     pdI.style.width = '5rem';      // مستطيل صغير لرقمين
-    var notesI = h('textarea', { class: 'inp', text: ex.notes || '' });
+    var notesI = h('textarea', { class: 'inp', text: ex.notes || '', autocomplete: 'off' });
     var doneCb = h('input', { type: 'checkbox', checked: !!ex.done });
-    var sourceI = h('input', { class: 'inp', type: 'text', list: 'srcList', autocomplete: 'off', value: ex.source || '', placeholder: 'مثال: مستشفى الحسين التعليمي' });
+    var sourceI = h('input', { class: 'inp', type: 'text', list: 'srcList', autocomplete: 'off', value: ex.source || '' });
     var srcList = h('datalist', { id: 'srcList' });
     SOURCE_OPTS.forEach(function (o) { srcList.appendChild(h('option', { value: o })); });
     var vaList = h('datalist', { id: 'vaList' });
     VA_OPTS.forEach(function (o) { vaList.appendChild(h('option', { value: o })); });
+    var lensSel = h('select', { class: 'inp', autocomplete: 'off' }, h('option', { value: '', text: '— اختر —' }));
+    LENS_OPTS.forEach(function (o) { lensSel.appendChild(h('option', { value: o, text: o })); });
+    lensSel.value = ex.lens || '';
+    var priceI = priceInput(ex.price);
+
+    // نسخ فحص سابق كاملاً (لفحص جديد أو بطاقة نظارة جديدة فقط)
+    var prevExams = isNew ? sortedExams(p) : [];
+    var copySel = null;
+    if (isNew && prevExams.length) {
+      copySel = h('select', { class: 'inp', autocomplete: 'off' }, h('option', { value: '', text: 'نسخ من فحص سابق...' }));
+      prevExams.forEach(function (x, i) {
+        copySel.appendChild(h('option', { value: String(i), text: fmtDate(x.date) + (x.external ? ' (خارجي' + (x.source ? ' — ' + x.source : '') + ')' : '') }));
+      });
+      copySel.addEventListener('change', function () {
+        if (!copySel.value) return;
+        var src = prevExams[parseInt(copySel.value, 10)];
+        if (!src) return;
+        COLS.forEach(function (c) {
+          refs['od_' + c].value = (src.od || {})[c] || ''; refs['od_' + c].dispatchEvent(new Event('input', { bubbles: true }));
+          refs['os_' + c].value = (src.os || {})[c] || ''; refs['os_' + c].dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        addI.value = src.add || ''; addI.dispatchEvent(new Event('input', { bubbles: true }));
+        pdI.value = src.pd || '';
+        lensSel.value = src.lens || '';
+        priceI.value = src.price ? fmtIQD(src.price) + ' د.ع' : '';
+        copySel.value = '';
+      });
+    }
 
     var t = h('table', { class: 'rx' });
     var trh = h('tr', {}, h('th', { text: '' }));
@@ -1017,10 +1114,11 @@
       tb.appendChild(tr);
     });
     t.appendChild(tb);
-    order.push(addI); order.push(pdI);
+    order.push(addI); order.push(pdI); order.push(priceI);
 
     function collect() {
-      var v = { date: dateI.value, od: {}, os: {}, add: addI.value, pd: pdI.value, notes: notesI.value, done: doneCb.checked, source: sourceI.value };
+      var v = { date: dateI.value, od: {}, os: {}, add: addI.value, pd: pdI.value, notes: notesI.value, done: doneCb.checked,
+        source: sourceI.value, lens: lensSel.value, price: parsePriceField(priceI) };
       COLS.forEach(function (c) { v.od[c] = refs['od_' + c].value; v.os[c] = refs['os_' + c].value; });
       return v;
     }
@@ -1032,23 +1130,27 @@
         if (v.date) dateI.value = v.date;
         COLS.forEach(function (c) { refs['od_' + c].value = (v.od || {})[c] || ''; refs['os_' + c].value = (v.os || {})[c] || ''; });
         addI.value = v.add || ''; pdI.value = v.pd || ''; notesI.value = v.notes || ''; doneCb.checked = !!v.done; sourceI.value = v.source || '';
+        lensSel.value = v.lens || ''; priceI.value = v.price ? fmtIQD(v.price) + ' د.ع' : '';
       } else delDraft(dkey);
     }
     pendingRestore = null;
 
-    var form = h('form', { class: 'card' + (isExternal ? ' ext' : ''), novalidate: true },
+    var form = h('form', { class: 'card' + (isExternal ? ' ext' : ''), novalidate: true, autocomplete: 'off' },
       h('h2', { text: (isExternal ? 'بطاقة تجهيز نظارة — فحص خارجي' : (isNew ? 'فحص جديد' : 'تعديل الفحص')) + ' — ' + p.name }),
       h('div', { style: 'height:1rem' }),
-      isExternal ? field('تم الفحص من', sourceI) : null,
+      copySel ? h('div', { class: 'copyrow' }, field2('نسخ فحص سابق كاملاً', copySel)) : null,
+      isExternal ? h('div', { class: 'grid2' }, field('تم الفحص في', sourceI), field('تاريخ الفحص', dateI)) : field('تاريخ الفحص', dateI),
       isExternal ? srcList : null,
-      field('تاريخ الفحص', dateI),
       h('div', { class: 'tablewrap' }, t),
       vaList,
       h('p', { class: 'hint', text: 'SPH: القوة الكروية · CYL: القوة الأسطوانية · AXIS: المحور · UCVA: حدة البصر بدون نظارة (قبل) · BCVA: حدة البصر بعد النظارة (أفضل تصحيح). الزر «+ / −» يبدّل إشارة الرقم.' }),
       h('div', { style: 'height:1rem' }),
-      h('div', { style: 'display:flex;justify-content:space-between;direction:ltr;gap:1rem' },
+      h('div', { class: 'addpd' },
         decField('ADD', addI, false),
         decField('PD', pdI, false)),
+      h('div', { class: 'grid2 lensrow' },
+        field2('نوع العدسة', lensSel),
+        field2('سعر النظارة (د.ع) — يظهر لك فقط، لا يُرسل للمريض', priceI)),
       field('ملاحظات الفحص', notesI),
       h('label', { class: 'check' }, doneCb, 'تم عمل النظارة'),
       h('div', { class: 'form-actions' },
@@ -1085,6 +1187,7 @@
       var out = { id: eid || uid(), created: prev ? prev.created : Date.now(), date: dateI.value || today(), od: {}, os: {},
         add: addI.value.trim(), pd: pdI.value.trim(), notes: notesI.value.trim(),
         external: isExternal, source: isExternal ? sourceI.value.trim() : '',
+        lens: lensSel.value, price: parsePriceField(priceI),
         done: doneCb.checked, doneDate: doneCb.checked ? ((prev && prev.doneDate) || today()) : '', notified: (prev && prev.notified) || '', mod: Date.now() };
       COLS.forEach(function (c) { out.od[c] = refs['od_' + c].value.trim(); out.os[c] = refs['os_' + c].value.trim(); });
       if (prev) pp.exams[pp.exams.indexOf(prev)] = out; else pp.exams.push(out);
@@ -1107,7 +1210,7 @@
   }
 
   function drawExamImage(p, e, cv) {
-    var W = 1080, H = 1470;
+    var W = 1080, H = 1520;
     cv.width = W; cv.height = H;
     var c = cv.getContext('2d');
     var INK = '#15171A', MUTED = '#565C63', LINE = '#C9CED3', ACC = '#A4501A', ALT = '#EEF1F3';
@@ -1139,7 +1242,7 @@
 
     txt(e.external ? 'بطاقة تجهيز نظارة (فحص خارجي)' : 'بطاقة فحص النظر', R, 276, '800 40px ' + DISP, INK);
     var hOff = 0;
-    if (e.external) { txt('تم الفحص من: ' + (e.source || '—'), R, 314, '600 26px ' + BODY, '#0284C7'); hOff = 42; }
+    if (e.external) { txt('تم الفحص في: ' + (e.source || '—'), R, 314, '600 26px ' + BODY, '#0284C7'); hOff = 42; }
     txt('الاسم: ' + p.name, R, 350 + hOff, '600 36px ' + BODY, INK);
     txt('تاريخ الفحص: ' + fmtDate(e.date), 70, 350 + hOff, '400 30px ' + BODY, MUTED, 'left');
     var ty = 400 + hOff;
@@ -1172,6 +1275,8 @@
     var y = ty + th + 70;
     if (e.add) { txt('الإضافة للقراءة ADD: ' + addSign(e.add), R, y, '600 32px ' + BODY, INK); y += 56; }
     if (e.pd) { txt('المسافة بين البؤبؤين PD: ' + e.pd, R, y, '600 32px ' + BODY, INK); y += 56; }
+    if (e.lens) { txt('نوع العدسة: ' + e.lens, R, y, '600 32px ' + BODY, INK); y += 56; }
+    // ملاحظة: السعر خاص بالعيادة عمداً ولا يُكتب أبداً في هذه الصورة المرسلة للمريض
     var nx = addMonths(e.date, REMIND_MONTHS);
     if (nx) { txt('موعد إعادة الفحص المقترح: ' + fmtDate(nx), R, y, '600 32px ' + BODY, ACC); y += 60; }
     if (e.notes) {
@@ -1368,7 +1473,7 @@
 
   function pinCard() {
     var cfg = getPin();
-    function pinInput() { return h('input', { class: 'inp ltr', type: 'password', inputmode: 'numeric', autocomplete: 'off' }); }
+    function pinInput() { return h('input', { class: 'inp ltr pin-mask', type: 'text', inputmode: 'numeric', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' }); }
     var cur = pinInput(), n1 = pinInput(), n2 = pinInput();
     var msg = h('p', { class: 'error', role: 'alert', hidden: true });
     function say(t) { msg.textContent = t; msg.hidden = false; }
@@ -1395,7 +1500,7 @@
         });
       } }));
     }
-    var form = h('form', { class: 'card', novalidate: true },
+    var form = h('form', { class: 'card', novalidate: true, autocomplete: 'off' },
       h('h3', { text: 'القفل بالرمز السري' }),
       h('p', { class: 'hint', text: cfg
         ? 'القفل مفعّل على هذا الجهاز. يُطلب الرمز عند فتح التطبيق، ويُقفل تلقائياً بعد ' + Math.round(IDLE_MS / 60000) + ' دقائق من عدم الاستخدام.'
