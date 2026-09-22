@@ -768,7 +768,7 @@
     var card = h('article', { class: 'card' + (e.external ? ' ext' : '') }, top, rxTable(e));
     if (e.add || e.pd || e.notes || (e.external && e.source) || e.lens || e.price) {
       var ex = h('p', { class: 'extra' });
-      if (e.external && e.source) ex.appendChild(h('span', { class: 'src-row' }, h('b', { text: 'تم الفحص في: ' }), e.source));
+      if (e.external && e.source) ex.appendChild(h('span', { class: 'src-row' }, h('b', { text: 'مصدر الفحص: ' }), e.source));
       if (e.external && e.source) ex.appendChild(document.createElement('br'));
       if (e.add) ex.appendChild(h('span', {}, h('b', { text: 'ADD (الإضافة للقراءة): ' }), h('span', { class: 'ltr', text: addSign(e.add) + '   ' })));
       if (e.pd) ex.appendChild(h('span', {}, h('b', { text: 'PD: ' }), h('span', { class: 'ltr', text: e.pd + '   ' })));
