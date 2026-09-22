@@ -1139,7 +1139,7 @@
       h('h2', { text: (isExternal ? 'بطاقة تجهيز نظارة — فحص خارجي' : (isNew ? 'فحص جديد' : 'تعديل الفحص')) + ' — ' + p.name }),
       h('div', { style: 'height:1rem' }),
       copySel ? h('div', { class: 'copyrow' }, field2('نسخ فحص سابق كاملاً', copySel)) : null,
-      isExternal ? h('div', { class: 'grid2' }, field('تم الفحص في', sourceI), field('تاريخ الفحص', dateI)) : field('تاريخ الفحص', dateI),
+      isExternal ? h('div', { class: 'grid2' }, field('مصدر الفحص', sourceI), field('تاريخ الفحص', dateI)) : field('تاريخ الفحص', dateI),
       isExternal ? srcList : null,
       h('div', { class: 'tablewrap' }, t),
       vaList,
