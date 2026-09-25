@@ -252,18 +252,12 @@
   (function enableOffline() {
     try {
       if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
-      var swSrc = "var CACHE='aldiqqa-offline-v1';" +
-        "self.addEventListener('install',function(e){self.skipWaiting();});" +
-        "self.addEventListener('activate',function(e){e.waitUntil(self.clients.claim());});" +
-        "self.addEventListener('fetch',function(e){" +
-          "if(e.request.method!=='GET')return;" +
-          "e.respondWith(caches.open(CACHE).then(function(c){" +
-            "return fetch(e.request).then(function(r){ if(r&&r.ok) c.put(e.request,r.clone()); return r; })" +
-            ".catch(function(){ return c.match(e.request).then(function(m){ return m||c.match(self.registration.scope); }); });" +
-          "}));" +
-        "});";
-      var swUrl = URL.createObjectURL(new Blob([swSrc], { type: 'text/javascript' }));
-      navigator.serviceWorker.register(swUrl).catch(function () {});
+      // إزالة أي تسجيل قديم (كان يعتمد على أسلوب أقل ثباتاً) قبل تسجيل ملف العمل بلا إنترنت الحقيقي
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        regs.forEach(function (r) { r.unregister(); });
+      }).catch(function () {}).then(function () {
+        navigator.serviceWorker.register('sw.js').catch(function () {});
+      });
     } catch (e2) {}
   })();
 
