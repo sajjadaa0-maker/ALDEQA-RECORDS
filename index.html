@@ -372,6 +372,7 @@
     if (legacy.length) e.notes = (e.notes ? e.notes + '\n' : '') + 'VA سابق: ' + legacy.join('، ');
     e.add = e.add || ''; e.pd = e.pd || ''; e.notes = e.notes || '';
     e.external = !!e.external; e.source = e.source || '';
+    e.glassesState = e.done ? 'done' : (e.glassesState === 'making' ? 'making' : 'none');
     e.lens = e.lens || ''; e.price = parseInt(e.price, 10) || 0;
     e.mod = e.mod || e.created || 0;
     return e;
@@ -733,10 +734,21 @@
   function glassesRow(p, e) {
     var row = h('div', { class: 'glasses' });
     var acts = h('div', { class: 'actions' });
-    if (!e.done) {
+    var state = e.done ? 'done' : (e.glassesState === 'making' ? 'making' : 'none');
+    if (state === 'none') {
+      row.appendChild(h('span', { text: 'لا توجد نظارة قيد التجهيز لهذا الفحص' }));
+      acts.appendChild(h('button', { type: 'button', class: 'btn btn-small', text: 'البدء بتجهيز النظارة', onclick: function () {
+        e.glassesState = 'making'; e.mod = Date.now(); p.updated = Date.now();
+        if (save()) refresh(true);
+      } }));
+    } else if (state === 'making') {
       row.appendChild(h('span', { text: 'النظارة: قيد العمل' }));
       acts.appendChild(h('button', { type: 'button', class: 'btn btn-small', text: 'تم عمل النظارة ✓', onclick: function () {
-        e.done = true; e.doneDate = today(); e.mod = Date.now(); p.updated = Date.now();
+        e.done = true; e.glassesState = 'done'; e.doneDate = today(); e.mod = Date.now(); p.updated = Date.now();
+        if (save()) refresh(true);
+      } }));
+      acts.appendChild(h('button', { type: 'button', class: 'btn btn-small', text: 'تراجع', onclick: function () {
+        e.glassesState = 'none'; e.mod = Date.now();
         if (save()) refresh(true);
       } }));
     } else {
@@ -750,7 +762,7 @@
         acts.appendChild(h('span', { class: 'hint', text: 'لا يوجد رقم هاتف' }));
       }
       acts.appendChild(h('button', { type: 'button', class: 'btn btn-small', text: 'إلغاء الجاهزية', onclick: function () {
-        e.done = false; e.doneDate = ''; e.notified = ''; e.mod = Date.now();
+        e.done = false; e.glassesState = 'making'; e.doneDate = ''; e.notified = ''; e.mod = Date.now();
         if (save()) refresh(true);
       } }));
     }
@@ -1016,7 +1028,8 @@
     var dkey = 'p:' + (pid || 'new');
     var nameI = h('input', { class: 'inp', type: 'text', value: p ? p.name : '', autocomplete: 'off' });
     var phoneI = h('input', { class: 'inp ltr', type: 'tel', value: p ? p.phone : '', autocomplete: 'off', inputmode: 'tel' });
-    var ageI = h('input', { class: 'inp', type: 'text', value: p ? p.age : '', autocomplete: 'off' });
+    var ageI = h('input', { class: 'inp ltr', type: 'text', inputmode: 'numeric', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', value: p ? p.age : '' });
+    ageI.addEventListener('input', function () { var c = cleanNum(ageI.value, 'int'); if (c !== ageI.value) ageI.value = c; });
     var notesI = h('textarea', { class: 'inp', text: p ? p.notes : '' });
     var err = h('p', { class: 'error', role: 'alert', hidden: true });
 
@@ -1197,7 +1210,8 @@
         add: addI.value.trim(), pd: pdI.value.trim(), notes: notesI.value.trim(),
         external: isExternal, source: isExternal ? sourceI.value.trim() : '',
         lens: lensI.value.trim(), price: parsePriceField(priceI),
-        done: doneCb.checked, doneDate: doneCb.checked ? ((prev && prev.doneDate) || today()) : '', notified: (prev && prev.notified) || '', mod: Date.now() };
+        done: doneCb.checked, doneDate: doneCb.checked ? ((prev && prev.doneDate) || today()) : '', notified: (prev && prev.notified) || '',
+        glassesState: doneCb.checked ? 'done' : ((prev && prev.glassesState === 'making') ? 'making' : 'none'), mod: Date.now() };
       COLS.forEach(function (c) { out.od[c] = refs['od_' + c].value.trim(); out.os[c] = refs['os_' + c].value.trim(); });
       if (prev) pp.exams[pp.exams.indexOf(prev)] = out; else pp.exams.push(out);
       var t2 = readTomb(); if (t2['e:' + out.id]) { delete t2['e:' + out.id]; writeTomb(t2); }
