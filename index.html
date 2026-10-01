@@ -245,7 +245,7 @@
   var COLS = ['sph', 'cyl', 'axis', 'ucva', 'bcva'];
   var HEADS = ['SPH', 'CYL', 'AXIS', 'UCVA', 'BCVA'];
   var VA_OPTS = ['6/6', '6/9', '6/12', '6/18', '6/24', '6/36', '6/60', 'CF', 'HM', 'PL', 'NPL'];
-  var SOURCE_OPTS = ['مستشفى', 'مستوصف صحي', 'عيادة خارجية أخرى', 'حسب طلب الزبون', 'درجة نظارة قديمة'];
+  var SOURCE_OPTS = ['مستشفى', 'مستوصف صحي', 'عيادة خارجية أخرى', 'حسب طلب الزبون', 'درجة نظارة قديمة', 'انستغرام'];
   var LENS_OPTS = ['ملتي كوت', 'بلوكات أخضر', 'بلوكت أزرق', 'فوتو بلاستك', 'فوتو بلوكات', 'فوتو زجاج', 'أخرى'];
 
   // تفعيل العمل بلا إنترنت: بعد أول فتح متصل، يُخزَّن شكل الصفحة في الجهاز فتفتح لاحقاً بدون إنترنت
@@ -351,6 +351,25 @@
     if (d.charAt(0) === '0') d = '964' + d.slice(1);
     return 'https://wa.me/' + d;
   }
+  // يستخرج اسم المستخدم فقط من أي شكل رابط إنستغرام يُلصق، أو من اسم مستخدم مكتوب مباشرة
+  function igUsername(raw) {
+    raw = String(raw || '').trim();
+    if (!raw) return '';
+    raw = raw.replace(/^@/, '');
+    var m = /instagram\.com\/([^/?#]+)/i.exec(raw);
+    if (m) return m[1];
+    return raw.split(/[/?#\s]/)[0];
+  }
+  function igLink(username) {
+    var u = igUsername(username);
+    return u ? 'https://instagram.com/' + u : null;
+  }
+  function openInstagram(username) {
+    var link = igLink(username);
+    if (!link) { alert('لا يوجد حساب إنستغرام مسجَّل لهذا المريض.'); return false; }
+    window.open(link, '_blank', 'noopener');
+    return true;
+  }
   function sortedExams(p) {
     return p.exams.slice().sort(function (a, b) {
       return (b.date || '').localeCompare(a.date || '') || ((b.created || 0) - (a.created || 0));
@@ -381,6 +400,7 @@
     p.exams = Array.isArray(p.exams) ? p.exams.map(fixExam) : [];
     p.name = String(p.name || '');
     p.phone = String(p.phone || '');
+    p.instagram = String(p.instagram || '');
     p.age = String(p.age || '');
     p.notes = String(p.notes || '');
     p.updated = p.updated || p.created || Date.now();
@@ -758,8 +778,13 @@
           text: e.notified ? 'إرسال الإشعار مرة أخرى' : 'إرسال رسالة الاستلام', onclick: function () {
             if (openWhatsApp(p.phone, readyMessage(p))) { e.notified = today(); e.mod = Date.now(); save(); refresh(true); }
           } }));
+      } else if (p.instagram) {
+        acts.appendChild(h('button', { type: 'button', class: 'btn btn-small' + (e.notified ? '' : ' btn-primary'),
+          text: '📷 فتح حساب انستغرام', onclick: function () {
+            if (openInstagram(p.instagram)) { e.notified = today(); e.mod = Date.now(); save(); refresh(true); }
+          } }));
       } else {
-        acts.appendChild(h('span', { class: 'hint', text: 'لا يوجد رقم هاتف' }));
+        acts.appendChild(h('span', { class: 'hint', text: 'لا يوجد رقم هاتف ولا حساب انستغرام' }));
       }
       acts.appendChild(h('button', { type: 'button', class: 'btn btn-small', text: 'إلغاء الجاهزية', onclick: function () {
         e.done = false; e.glassesState = 'making'; e.doneDate = ''; e.notified = ''; e.mod = Date.now();
@@ -789,7 +814,7 @@
     var card = h('article', { class: 'card' + (e.external ? ' ext' : '') }, top, rxTable(e));
     if (e.add || e.pd || e.notes || (e.external && e.source) || e.lens || e.price) {
       var ex = h('p', { class: 'extra' });
-      if (e.external && e.source) ex.appendChild(h('span', { class: 'src-row' }, h('b', { text: 'تم الفحص في: ' }), e.source));
+      if (e.external && e.source) ex.appendChild(h('span', { class: 'src-row' }, h('b', { text: 'مصدر الفحص: ' }), e.source));
       if (e.external && e.source) ex.appendChild(document.createElement('br'));
       if (e.add) ex.appendChild(h('span', {}, h('b', { text: 'ADD (الإضافة للقراءة): ' }), h('span', { class: 'ltr', text: addSign(e.add) + '   ' })));
       if (e.pd) ex.appendChild(h('span', {}, h('b', { text: 'PD: ' }), h('span', { class: 'ltr', text: e.pd + '   ' })));
@@ -860,6 +885,7 @@
       var wa = waLink(p.phone);
       if (wa) meta.appendChild(h('a', { href: wa, target: '_blank', rel: 'noopener', text: 'واتساب' }));
     }
+    if (p.instagram) meta.appendChild(h('a', { href: igLink(p.instagram), target: '_blank', rel: 'noopener', class: 'ltr', text: '📷 @' + p.instagram }));
     if (p.age) meta.appendChild(h('span', { text: 'العمر: ' + p.age }));
 
     var head = h('div', { class: 'card' },
@@ -1028,17 +1054,19 @@
     var dkey = 'p:' + (pid || 'new');
     var nameI = h('input', { class: 'inp', type: 'text', value: p ? p.name : '', autocomplete: 'off' });
     var phoneI = h('input', { class: 'inp ltr', type: 'tel', value: p ? p.phone : '', autocomplete: 'off', inputmode: 'tel' });
+    var igI = h('input', { class: 'inp ltr', type: 'text', value: p ? (p.instagram || '') : '', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', placeholder: '@username' });
+    igI.addEventListener('blur', function () { var u = igUsername(igI.value); if (u !== igI.value) igI.value = u; });
     var ageI = h('input', { class: 'inp ltr', type: 'text', inputmode: 'numeric', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', value: p ? p.age : '' });
     ageI.addEventListener('input', function () { var c = cleanNum(ageI.value, 'int'); if (c !== ageI.value) ageI.value = c; });
     var notesI = h('textarea', { class: 'inp', text: p ? p.notes : '' });
     var err = h('p', { class: 'error', role: 'alert', hidden: true });
 
-    function collect() { return { name: nameI.value, phone: phoneI.value, age: ageI.value, notes: notesI.value }; }
+    function collect() { return { name: nameI.value, phone: phoneI.value, instagram: igI.value, age: ageI.value, notes: notesI.value }; }
     var v0 = JSON.stringify(collect());
     var dr = readDrafts()[dkey];
     if (dr && dr.v && JSON.stringify(dr.v) !== v0) {
       if (pendingRestore === dkey || confirm('توجد بيانات كتبتَها سابقاً ولم تُحفظ. هل تريد استرجاعها؟')) {
-        nameI.value = dr.v.name || ''; phoneI.value = dr.v.phone || ''; ageI.value = dr.v.age || ''; notesI.value = dr.v.notes || '';
+        nameI.value = dr.v.name || ''; phoneI.value = dr.v.phone || ''; igI.value = dr.v.instagram || ''; ageI.value = dr.v.age || ''; notesI.value = dr.v.notes || '';
       } else delDraft(dkey);
     }
     pendingRestore = null;
@@ -1049,6 +1077,7 @@
       err,
       field('الاسم', nameI),
       h('div', { class: 'grid2' }, field('رقم الهاتف', phoneI), field('العمر', ageI)),
+      field('حساب انستغرام (اختياري، إن لم يتوفر رقم هاتف)', igI),
       field('ملاحظات (أمراض مزمنة، حساسية، استخدام حاسوب لفترة طويلة...)', notesI),
       h('div', { class: 'form-actions' },
         h('button', { type: 'submit', class: 'btn btn-primary', text: 'حفظ' }),
@@ -1073,14 +1102,14 @@
       var name = nameI.value.trim();
       if (!name) { err.textContent = 'اكتب اسم المريض.'; err.hidden = false; nameI.focus(); return; }
       if (isNew) {
-        var np = fixPatient({ id: uid(), name: name, phone: phoneI.value.trim(), age: ageI.value.trim(), notes: notesI.value.trim(), exams: [], created: Date.now(), updated: Date.now() });
+        var np = fixPatient({ id: uid(), name: name, phone: phoneI.value.trim(), instagram: igUsername(igI.value), age: ageI.value.trim(), notes: notesI.value.trim(), exams: [], created: Date.now(), updated: Date.now() });
         patients.push(np);
         if (!save()) { patients.splice(patients.indexOf(np), 1); return; }
         clearTimeout(tmr); delDraft(dkey); flushDraft = null;
         selectedId = np.id; editingExamId = null; mode = 'exam';
       } else {
         var cur = ensurePatient(p);
-        cur.name = name; cur.phone = phoneI.value.trim(); cur.age = ageI.value.trim(); cur.notes = notesI.value.trim(); cur.updated = Date.now();
+        cur.name = name; cur.phone = phoneI.value.trim(); cur.instagram = igUsername(igI.value); cur.age = ageI.value.trim(); cur.notes = notesI.value.trim(); cur.updated = Date.now();
         if (!save()) return;
         clearTimeout(tmr); delDraft(dkey); flushDraft = null;
         mode = 'view';
@@ -1108,7 +1137,7 @@
     var doneCb = h('input', { type: 'checkbox', checked: !!ex.done });
     var vaList = h('datalist', { id: 'vaList' });
     VA_OPTS.forEach(function (o) { vaList.appendChild(h('option', { value: o })); });
-    var sourceField = suggestField('تم الفحص في', ex.source || '', SOURCE_OPTS);
+    var sourceField = suggestField('مصدر الفحص', ex.source || '', SOURCE_OPTS);
     var sourceI = sourceField._input;
     var lensField = suggestField('نوع العدسة', ex.lens || '', LENS_OPTS);
     var lensI = lensField._input;
@@ -1265,7 +1294,7 @@
 
     txt(e.external ? 'بطاقة تجهيز نظارة (فحص خارجي)' : 'بطاقة فحص النظر', R, 276, '800 40px ' + DISP, INK);
     var hOff = 0;
-    if (e.external) { txt('تم الفحص في: ' + (e.source || '—'), R, 314, '600 26px ' + BODY, '#0284C7'); hOff = 42; }
+    if (e.external) { txt('مصدر الفحص: ' + (e.source || '—'), R, 314, '600 26px ' + BODY, '#0284C7'); hOff = 42; }
     txt('الاسم: ' + p.name, R, 350 + hOff, '600 36px ' + BODY, INK);
     txt('تاريخ الفحص: ' + fmtDate(e.date), 70, 350 + hOff, '400 30px ' + BODY, MUTED, 'left');
     var ty = 400 + hOff;
@@ -1384,13 +1413,15 @@
       h('button', { type: 'button', class: 'btn', text: 'حفظ في الجهاز', onclick: function () { saveCanvas(cv, fname); } }));
     if (waLink(p.phone)) {
       acts.appendChild(h('button', { type: 'button', class: 'btn btn-whatsapp', text: '💬 فتح محادثة المريض على واتساب', onclick: function () { openWhatsApp(p.phone, ''); } }));
+    } else if (p.instagram) {
+      acts.appendChild(h('button', { type: 'button', class: 'btn btn-whatsapp', text: '📷 فتح حساب انستغرام', onclick: function () { openInstagram(p.instagram); } }));
     }
     acts.appendChild(h('button', { type: 'button', class: 'btn', text: 'رجوع', onclick: function () { editingExamId = null; mode = 'view'; refresh(); } }));
 
     var wrap = h('div', {},
       h('div', { class: 'card' },
         h('h2', { text: 'صورة الفحص — ' + p.name }),
-        h('p', { class: 'hint', text: 'اضغط «حفظ في الجهاز» أولاً لتنزيل الصورة، ثم اضغط «فتح محادثة المريض على واتساب» واضغط علامة المشبك 📎 داخل واتساب واختر الصورة من الجهاز وأرسلها.' }),
+        h('p', { class: 'hint', text: 'اضغط «حفظ في الجهاز» أولاً لتنزيل الصورة، ثم اضغط «فتح محادثة المريض على ' + (waLink(p.phone) ? 'واتساب» واضغط علامة المشبك 📎 داخل واتساب' : 'انستغرام»') + ' واختر الصورة من الجهاز وأرسلها.' }),
         h('div', { style: 'height:.5rem' }),
         acts),
       cv);
