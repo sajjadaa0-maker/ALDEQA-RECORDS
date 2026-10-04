@@ -360,6 +360,12 @@
     if (m) return m[1];
     return raw.split(/[/?#\s]/)[0];
   }
+  // ينظّف الحقل فقط إذا كان المحتوى رابط انستغرام فعلاً، ولا يغيّر أي اسم عادي آخر
+  function igUsernameIfLink(raw) {
+    var s = String(raw || '').trim();
+    var m = /instagram\.com\/([^/?#\s]+)/i.exec(s);
+    return m ? m[1].replace(/^@/, '') : s;
+  }
   function igLink(username) {
     var u = igUsername(username);
     return u ? 'https://instagram.com/' + u : null;
@@ -1053,6 +1059,13 @@
     var pid = p ? p.id : null;
     var dkey = 'p:' + (pid || 'new');
     var nameI = h('input', { class: 'inp', type: 'text', value: p ? p.name : '', autocomplete: 'off' });
+    nameI.addEventListener('blur', function () { var u = igUsernameIfLink(nameI.value); if (u !== nameI.value) nameI.value = u; });
+    // إن لصق المستخدم رابط صفحة إنستغرام كاملاً هنا، يُستخرج منه اسم المستخدم فقط. أي اسم عادي يبقى كما هو بلا أي تغيير.
+    nameI.addEventListener('blur', function () {
+      var raw = nameI.value;
+      var m = /instagram\.com\/([^/?#]+)/i.exec(raw);
+      if (m && m[1] !== raw) nameI.value = m[1];
+    });
     var phoneI = h('input', { class: 'inp ltr', type: 'tel', value: p ? p.phone : '', autocomplete: 'off', inputmode: 'tel' });
     var igI = h('input', { class: 'inp ltr', type: 'text', value: p ? (p.instagram || '') : '', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', placeholder: '@username' });
     igI.addEventListener('blur', function () { var u = igUsername(igI.value); if (u !== igI.value) igI.value = u; });
@@ -1620,6 +1633,52 @@
     return box;
   }
 
+  // كل الفحوصات التي حالتها "قيد العمل" حالياً، من أقدمها إلى أحدثها
+  function makingList() {
+    var out = [];
+    patients.forEach(function (p) {
+      p.exams.forEach(function (e) {
+        if (!e.done && e.glassesState === 'making') out.push({ p: p, e: e });
+      });
+    });
+    out.sort(function (a, b) { return (a.e.date || '').localeCompare(b.e.date || ''); });
+    return out;
+  }
+  function pendingGlassesCard() {
+    var box = h('div', { style: 'margin-top:.75rem' });
+    var card = h('div', { class: 'card' },
+      h('h3', { text: 'مراجعة النظارات قيد العمل' }),
+      h('p', { class: 'hint', text: 'كل فحص ضغطت له «البدء بتجهيز النظارة» ولم تُنهِه بعد. راجعها من وقت لآخر، فقد تجد نظارة سُلِّمت فعلاً ونسيت تحديثها.' }),
+      box);
+    function fill() {
+      box.textContent = '';
+      var list = makingList();
+      if (!list.length) { box.appendChild(h('p', { class: 'hint', text: 'لا توجد أي نظارة قيد العمل حالياً.' })); return; }
+      box.appendChild(h('button', { type: 'button', class: 'btn btn-small btn-danger', text: 'إلغاء الكل (' + list.length + ')', style: 'margin-bottom:.75rem', onclick: function () {
+        if (!confirm('إلغاء حالة "قيد العمل" عن ' + list.length + ' فحص؟ هذا لا يحذف الفحوصات نفسها، فقط يوقف عدّها ضمن النظارات قيد العمل.')) return;
+        list.forEach(function (it) { it.e.glassesState = 'none'; it.e.mod = Date.now(); });
+        if (save()) fill();
+      } }));
+      list.forEach(function (it) {
+        var p = it.p, e = it.e;
+        box.appendChild(h('div', { class: 'card rrow pending-row', style: 'margin-bottom:.5rem' },
+          h('div', {}, h('b', { text: p.name }), h('small', { text: 'فحص ' + fmtDate(e.date) + (e.external ? ' (خارجي)' : '') })),
+          h('div', { class: 'actions' },
+            h('button', { type: 'button', class: 'btn btn-small', text: 'فتح الملف', onclick: function () { select(p.id); } }),
+            h('button', { type: 'button', class: 'btn btn-small', text: 'تم عمل النظارة ✓', onclick: function () {
+              e.done = true; e.glassesState = 'done'; e.doneDate = today(); e.mod = Date.now(); p.updated = Date.now();
+              if (save()) fill();
+            } }),
+            h('button', { type: 'button', class: 'btn btn-small btn-danger', text: 'إلغاء', onclick: function () {
+              e.glassesState = 'none'; e.mod = Date.now();
+              if (save()) fill();
+            } }))));
+      });
+    }
+    fill();
+    return card;
+  }
+
   function backupView() {
     var exams = 0;
     patients.forEach(function (p) { exams += p.exams.length; });
@@ -1662,6 +1721,7 @@
         h('p', { class: 'hint', text: 'اختر ملف النسخة الاحتياطية (.json). يُدمج مع السجلات الحالية ولا يمحو شيئاً.' }),
         h('div', { style: 'height:.6rem' }),
         fileI),
+      pendingGlassesCard(),
       snapshotsCard(),
       pinCard());
   }
@@ -1707,7 +1767,7 @@
     patients.forEach(function (p) {
       p.exams.forEach(function (e) {
         totalExams++;
-        if (!e.done) pending++;
+        if (!e.done && e.glassesState === 'making') pending++;
         if (e.done && !e.notified) readyNotNotified++;
         if (e.date === todayStr) examsToday++;
       });
