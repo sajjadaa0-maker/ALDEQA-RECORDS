@@ -156,15 +156,6 @@
   .suggest-item { display: block; width: 100%; text-align: start; padding: .65rem .9rem; border: 0;
     background: transparent; color: var(--ink); font: inherit; cursor: pointer; }
   .suggest-item:hover, .suggest-item:focus-visible { background: var(--alt); }
-  .sugpanel { margin: .7rem 0 0; padding: .7rem; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
-  .sugpanel .sughead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; margin-bottom: .5rem; }
-  .sugpanel .sugtitle { color: var(--muted); font-size: .9rem; }
-  .sugsign { display: inline-flex; gap: .35rem; direction: ltr; }
-  .sugsign button { min-width: 2.8rem; min-height: 2.4rem; border: 1.5px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); font: inherit; font-weight: 700; cursor: pointer; }
-  .sugsign button.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
-  .sugchips { display: flex; flex-wrap: wrap; gap: .4rem; direction: ltr; }
-  .sugchip { min-height: 2.5rem; min-width: 3.6rem; padding: .2rem .7rem; border: 1.5px solid var(--line); border-radius: 999px; background: var(--bg); color: var(--ink); font: inherit; cursor: pointer; }
-  .sugchip:hover, .sugchip:active { border-color: var(--accent); background: var(--alt); }
   .pin-mask { -webkit-text-security: disc; text-security: disc; }
   .decrow { display: flex; gap: .5rem; align-items: stretch; }
   .decrow .sign { width: auto; margin: 0; min-width: 5.2rem; }
@@ -1157,6 +1148,8 @@
     pdI.style.width = '5rem';      // مستطيل صغير لرقمين
     var notesI = h('textarea', { class: 'inp', text: ex.notes || '', autocomplete: 'off' });
     var doneCb = h('input', { type: 'checkbox', checked: !!ex.done });
+    var rxList = h('datalist', { id: 'rxList' });
+    for (var qi = 0; qi <= 24; qi++) rxList.appendChild(h('option', { value: (qi * 0.25).toFixed(2) }));
     var vaList = h('datalist', { id: 'vaList' });
     VA_OPTS.forEach(function (o) { vaList.appendChild(h('option', { value: o })); });
     var sourceField = suggestField('مصدر الفحص', ex.source || '', SOURCE_OPTS);
@@ -1191,54 +1184,8 @@
     t.appendChild(tb);
     order.push(addI); order.push(pdI); order.push(priceI);
 
-    // اقتراحات درجات سريعة (من 0.25 إلى 4.00) تظهر عند الضغط على حقل SPH أو CYL أو ADD
-    var sugTarget = null, sugSign = '-', sugPlusOnly = false;
-    var sugTitle = h('span', { class: 'sugtitle' });
-    var btnMinus = h('button', { type: 'button', text: '−', 'aria-label': 'سالب' });
-    var btnPlus = h('button', { type: 'button', text: '+', 'aria-label': 'موجب' });
-    var sugSignBox = h('div', { class: 'sugsign' }, btnMinus, btnPlus);
-    var sugChips = h('div', { class: 'sugchips' });
-    var sugPanel = h('div', { class: 'sugpanel', hidden: true }, h('div', { class: 'sughead' }, sugTitle, sugSignBox), sugChips);
-    function paintSign() {
-      btnMinus.className = sugSign === '-' ? 'on' : '';
-      btnPlus.className = sugSign === '+' ? 'on' : '';
-    }
-    function keepFocus(ev) { ev.preventDefault(); }
-    [btnMinus, btnPlus].forEach(function (b) { b.addEventListener('mousedown', keepFocus); });
-    btnMinus.addEventListener('click', function () { sugSign = '-'; paintSign(); });
-    btnPlus.addEventListener('click', function () { sugSign = '+'; paintSign(); });
-    for (var q = 1; q <= 16; q++) {
-      (function (val) {
-        var chip = h('button', { type: 'button', class: 'sugchip', text: val });
-        chip.addEventListener('mousedown', keepFocus);
-        chip.addEventListener('click', function () {
-          if (!sugTarget) return;
-          sugTarget.value = (sugPlusOnly ? '+' : sugSign) + val;
-          sugTarget.dispatchEvent(new Event('input', { bubbles: true }));
-          sugTarget.dispatchEvent(new Event('change', { bubbles: true }));
-        });
-        sugChips.appendChild(chip);
-      })((q * 0.25).toFixed(2));
-    }
-    function attachSug(inp, label, plusOnly) {
-      inp.addEventListener('focus', function () {
-        sugTarget = inp; sugPlusOnly = !!plusOnly;
-        var cur = inp.value.trim().charAt(0);
-        if (!plusOnly && (cur === '+' || cur === '-')) sugSign = cur;
-        sugTitle.textContent = 'اقتراحات — ' + label;
-        sugSignBox.hidden = !!plusOnly;
-        paintSign();
-        sugPanel.hidden = false;
-      });
-      inp.addEventListener('blur', function () {
-        setTimeout(function () { if (document.activeElement !== sugTarget) sugPanel.hidden = true; }, 200);
-      });
-    }
-    attachSug(refs.od_sph, 'العين اليمنى SPH');
-    attachSug(refs.od_cyl, 'العين اليمنى CYL');
-    attachSug(refs.os_sph, 'العين اليسرى SPH');
-    attachSug(refs.os_cyl, 'العين اليسرى CYL');
-    attachSug(addI, 'ADD (الإضافة للقراءة)', true);
+    // اقتراحات SPH/CYL تظهر داخل شريط اقتراحات لوحة المفاتيح عبر datalist
+    ['od_sph', 'od_cyl', 'os_sph', 'os_cyl'].forEach(function (k) { refs[k].setAttribute('list', 'rxList'); });
 
     function collect() {
       var v = { date: dateI.value, od: {}, os: {}, add: addI.value, pd: pdI.value, notes: notesI.value, done: doneCb.checked,
@@ -1264,8 +1211,8 @@
       h('div', { style: 'height:1rem' }),
       isExternal ? h('div', { class: 'grid2' }, sourceField, field('تاريخ الفحص', dateI)) : field('تاريخ الفحص', dateI),
       h('div', { class: 'tablewrap' }, t),
-      sugPanel,
       vaList,
+      rxList,
       h('p', { class: 'hint', text: 'SPH: القوة الكروية · CYL: القوة الأسطوانية · AXIS: المحور · UCVA: حدة البصر بدون نظارة (قبل) · BCVA: حدة البصر بعد النظارة (أفضل تصحيح). الزر «+ / −» يبدّل إشارة الرقم.' }),
       h('div', { style: 'height:1rem' }),
       h('div', { class: 'addpd' },
