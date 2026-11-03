@@ -105,6 +105,7 @@
   .field label { display: block; font-weight: 500; font-size: .95rem; margin-bottom: .25rem; }
   .hint { color: var(--muted); font-size: .85rem; margin-top: .6rem; }
   .error { color: var(--danger); font-weight: 500; margin-bottom: .75rem; }
+  .inp-bad { border-color: var(--danger) !important; box-shadow: 0 0 0 2px rgba(179, 38, 30, .25); }
   .form-actions { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .5rem; }
 
   .badge { display: inline-block; min-width: 1.4rem; padding: 0 .45rem; margin-inline-start: .4rem; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: .85rem; line-height: 1.5rem; text-align: center; }
@@ -1187,6 +1188,38 @@
     // اقتراحات SPH/CYL تظهر داخل شريط اقتراحات لوحة المفاتيح عبر datalist
     ['od_sph', 'od_cyl', 'os_sph', 'os_cyl'].forEach(function (k) { refs[k].setAttribute('list', 'rxList'); });
 
+    // عند اختيار قيمة من اقتراحات لوحة المفاتيح ينتقل المؤشر تلقائياً إلى الحقل التالي
+    // (Chrome يُطلق الحدث بنوع insertReplacementText عند اختيار اقتراح، فلا يتأثر الكتابة اليدوية ولا زر + / −)
+    COLS.forEach(function (c) {
+      if (c === 'axis') return;
+      ['od', 'os'].forEach(function (eye) {
+        var inp = refs[eye + '_' + c];
+        inp.addEventListener('input', function (ev) {
+          if (ev.inputType !== 'insertReplacementText') return;
+          var nxt = order[order.indexOf(inp) + 1];
+          if (nxt) setTimeout(function () { nxt.focus(); }, 0);
+        });
+      });
+    });
+
+    // لا يُحفظ الفحص إن كان SPH أو CYL مكتوباً بلا إشارة + أو − (الصفر والفارغ مستثنيان)
+    var errBox = h('p', { class: 'error', role: 'alert', hidden: true });
+    ['od_sph', 'od_cyl', 'os_sph', 'os_cyl'].forEach(function (k) {
+      refs[k].addEventListener('input', function () { refs[k].classList.remove('inp-bad'); });
+    });
+    function missingSigns() {
+      var bad = [];
+      ['od_sph', 'od_cyl', 'os_sph', 'os_cyl'].forEach(function (k) {
+        var inp = refs[k], v = inp.value.trim();
+        inp.classList.remove('inp-bad');
+        if (!v) return;
+        var num = parseFloat(v.replace(/^[+\-]/, ''));
+        if (!num) return;
+        if (!/^[+\-]/.test(v)) bad.push(inp);
+      });
+      return bad;
+    }
+
     function collect() {
       var v = { date: dateI.value, od: {}, os: {}, add: addI.value, pd: pdI.value, notes: notesI.value, done: doneCb.checked,
         source: sourceI.value, lens: lensI.value, price: parsePriceField(priceI) };
@@ -1211,6 +1244,7 @@
       h('div', { style: 'height:1rem' }),
       isExternal ? h('div', { class: 'grid2' }, sourceField, field('تاريخ الفحص', dateI)) : field('تاريخ الفحص', dateI),
       h('div', { class: 'tablewrap' }, t),
+      errBox,
       vaList,
       rxList,
       h('p', { class: 'hint', text: 'SPH: القوة الكروية · CYL: القوة الأسطوانية · AXIS: المحور · UCVA: حدة البصر بدون نظارة (قبل) · BCVA: حدة البصر بعد النظارة (أفضل تصحيح). الزر «+ / −» يبدّل إشارة الرقم.' }),
@@ -1251,6 +1285,16 @@
 
     form.addEventListener('submit', function (ev) {
       ev.preventDefault();
+      var badSigns = missingSigns();
+      if (badSigns.length) {
+        badSigns.forEach(function (i) { i.classList.add('inp-bad'); });
+        errBox.textContent = 'لم يُحفظ الفحص: أضف إشارة + أو − للحقول المظلّلة (' + badSigns.map(function (i) { return i.getAttribute('aria-label'); }).join('، ') + ').';
+        errBox.hidden = false;
+        badSigns[0].scrollIntoView({ block: 'center' });
+        badSigns[0].focus();
+        return;
+      }
+      errBox.hidden = true;
       var pp = ensurePatient(p);
       var prev = null;
       if (eid) for (var i = 0; i < pp.exams.length; i++) if (pp.exams[i].id === eid) prev = pp.exams[i];
